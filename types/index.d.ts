@@ -108,6 +108,8 @@ export const Contacts: React.FC<ContactsProps>
 
 export interface LogoProps {
   wordmark?: boolean
+  /** Logo image URL served by the host app. Default "/vulos-mail.png". */
+  src?: string
   className?: string
 }
 export const Logo: React.FC<LogoProps>

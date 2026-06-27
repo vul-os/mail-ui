@@ -167,7 +167,7 @@ bundled `vulos-mail/webmail` passes its `<AccountSettings/>` (backed by
 | `Calendar` | Month + agenda views over `GET /v1/calendar/events` (requires lilmail `[caldav]`). |
 | `CalendarPanel` | The persistent right-hand mini-month + agenda side panel (expandable to the full `Calendar`). |
 | `Contacts` | Searchable contact list over `GET /v1/contacts` (requires lilmail `[carddav]`). |
-| `Logo` | The distinctive Vulos Mail brand mark (token-driven SVG + optional wordmark). |
+| `Logo` | The Vulos Mail brand mark. Renders the real product image (`src`, default `/vulos-mail.png` — host-served) with an optional wordmark; falls back to a token-driven SVG mark if the image fails to load. |
 | `FolderList`, `MessageList`, `MessageView`, `Compose`, `Settings`, `Icon` | Individual components. |
 | `groupThreads`, `useSettings`, `DEFAULT_SETTINGS` | Threading grouping + persisted-settings helpers. |
 | `createMailClient`, `ApiError`, `FLAG_SEEN`, `FLAG_FLAGGED` | `/v1` API client (mail + calendar + contacts + `moveMessage`). |

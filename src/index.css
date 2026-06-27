@@ -85,7 +85,7 @@
 
 /* ── Brand logo (distinctive mark + wordmark) ──────────────────────────────── */
 .vm-logo { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; }
-.vm-logo-mark { width: 26px; height: 26px; flex: none; border-radius: 8px; box-shadow: var(--shadow-1); }
+.vm-logo-mark { width: 26px; height: 26px; flex: none; border-radius: 8px; box-shadow: var(--shadow-1); object-fit: cover; }
 .vm-logo-word { font-family: var(--font-sans); font-weight: 700; font-size: 16px; letter-spacing: -.03em; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vm-logo-word b { font-weight: 700; color: var(--brand); margin-left: 1px; }
 [data-theme="light"] .vm-logo-word b { color: var(--accent); }
