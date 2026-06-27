@@ -19,7 +19,7 @@ export { default as Icon } from '../components/Icon.jsx'
 
 export { groupThreads } from '../components/threading.js'
 export { useSettings, DEFAULT_SETTINGS } from '../components/useSettings.js'
-export { sanitizeEmailHtml, stripHtml } from '../components/sanitize.js'
+export { sanitizeEmailHtml, sanitizeEmailBody, stripHtml } from '../components/sanitize.js'
 export {
   createMailClient,
   ApiError,

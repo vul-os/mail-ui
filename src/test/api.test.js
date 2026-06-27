@@ -69,6 +69,40 @@ describe('createMailClient — requests', () => {
   })
 })
 
+describe('createMailClient — attachment download', () => {
+  it('GETs the attachment route with credentials and returns the blob', async () => {
+    const blob = new Blob(['pdf-bytes'], { type: 'application/pdf' })
+    const fetch = vi.fn(() => Promise.resolve({
+      ok: true, status: 200,
+      headers: { get: () => null },
+      blob: () => Promise.resolve(blob),
+    }))
+    const origCreate = URL.createObjectURL
+    const origRevoke = URL.revokeObjectURL
+    URL.createObjectURL = vi.fn(() => 'blob:demo')
+    URL.revokeObjectURL = vi.fn()
+    try {
+      const c = createMailClient({ baseUrl: '/v1', fetch })
+      const out = await c.downloadAttachment('1005', '1', 'invoice.pdf')
+      expect(out).toBe(blob)
+      const [url, init] = fetch.mock.calls[0]
+      expect(url).toBe('/v1/messages/1005/attachments/1')
+      expect(init.method).toBe('GET')
+      expect(init.credentials).toBe('include')
+      expect(URL.createObjectURL).toHaveBeenCalledWith(blob)
+    } finally {
+      URL.createObjectURL = origCreate
+      URL.revokeObjectURL = origRevoke
+    }
+  })
+
+  it('rejects with ApiError(404) when the route is absent (capability probe)', async () => {
+    const fetch = vi.fn(() => jsonRes({ error: 'no such route' }, 404))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    await expect(c.downloadAttachment('1005', '1', 'f.pdf')).rejects.toMatchObject({ status: 404 })
+  })
+})
+
 describe('createMailClient — calendar & contacts', () => {
   it('listEvents serialises Date range to RFC 3339 query and unwraps {events}', async () => {
     const fetch = vi.fn(() => jsonRes({ events: [{ uid: 'e1' }] }))

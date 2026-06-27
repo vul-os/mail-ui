@@ -186,7 +186,71 @@ export function createMailClient(opts = {}) {
     quota() {
       return request('/quota')
     },
+
+    /**
+     * GET /v1/messages/:uid/attachments/:partId → binary attachment.
+     *
+     * Streams the attachment body to a Blob and triggers a browser "save as"
+     * using `filename` (falling back to the server's Content-Disposition, then
+     * a generic name). Returns the Blob so callers/tests can inspect it.
+     *
+     * This is a download (blob save), never innerHTML — no XSS surface. The
+     * route is optional (lilmail /v1 attachments branch): it rejects with
+     * ApiError(404)/(405) on servers without it so the UI can disable the
+     * download affordance, mirroring the archive/quota capability probes.
+     *
+     * @param {string|number} uid - message UID (numeric path segment)
+     * @param {string|number} partId - MIME part id of the attachment
+     * @param {string} [filename] - preferred save-as name
+     */
+    async downloadAttachment(uid, partId, filename) {
+      const path = `/messages/${encodeURIComponent(uid)}/attachments/${encodeURIComponent(partId)}`
+      const res = await fetchImpl(buildUrl(path), { method: 'GET', credentials: 'include' })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        throw new ApiError(payload.error || res.statusText || 'download failed', res.status)
+      }
+      const blob = await res.blob()
+      const name = filename || filenameFromDisposition(res.headers) || 'attachment'
+      saveBlob(blob, name)
+      return blob
+    },
   }
+}
+
+/** Parse a filename from a Content-Disposition header (RFC 5987 aware). */
+function filenameFromDisposition(headers) {
+  try {
+    const cd = headers?.get?.('Content-Disposition')
+    if (!cd) return ''
+    const star = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(cd)
+    if (star) return decodeURIComponent(star[1].trim().replace(/^"|"$/g, ''))
+    const plain = /filename="?([^";]+)"?/i.exec(cd)
+    return plain ? plain[1].trim() : ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Trigger a browser download for a Blob. No-op outside a DOM (tests / SSR) or
+ * when object URLs are unavailable, so the API client stays environment-safe.
+ */
+function saveBlob(blob, filename) {
+  if (typeof document === 'undefined') return
+  if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return
+  const href = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = href
+  a.download = filename
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // Revoke on the next tick so the click has time to start the download.
+  setTimeout(() => {
+    if (typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(href)
+  }, 0)
 }
 
 /** Coerce a Date | ISO string | undefined to an RFC 3339 string (or undefined). */

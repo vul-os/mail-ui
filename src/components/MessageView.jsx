@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Icon from './Icon.jsx'
-import { sanitizeEmailHtml } from './sanitize.js'
+import { sanitizeEmailBody } from './sanitize.js'
 import { initials, avatarStyle } from './avatar.js'
 import { fullDate } from './format.js'
 import { FLAG_SEEN, FLAG_FLAGGED } from '../api.js'
@@ -14,7 +14,7 @@ const hasFlag = (m, f) => Array.isArray(m?.flags) && m.flags.includes(f)
 export default function MessageView({
   thread, fullById = {}, onNeedBody, loading, error,
   onToggleStar, onArchive, onDelete, onReply, onReplyAll, onForward, onBack,
-  canArchive = true,
+  onDownloadAttachment, canArchive = true, attachmentsSupported = true,
 }) {
   const messages = thread?.messages ?? []
   const latestId = messages.length ? messages[messages.length - 1].id : null
@@ -111,6 +111,8 @@ export default function MessageView({
                 onReply={() => onReply?.(fullById[m.id] || m)}
                 onReplyAll={() => onReplyAll?.(fullById[m.id] || m)}
                 onForward={() => onForward?.(fullById[m.id] || m)}
+                onDownloadAttachment={onDownloadAttachment}
+                attachmentsSupported={attachmentsSupported}
               />
             )
           })}
@@ -120,9 +122,13 @@ export default function MessageView({
   )
 }
 
-function Message({ summary, full, open, last, onToggle, onReply, onReplyAll, onForward }) {
+function Message({ summary, full, open, last, onToggle, onReply, onReplyAll, onForward, onDownloadAttachment, attachmentsSupported = true }) {
   const m = full || summary
-  const safeHtml = useMemo(() => (m?.html ? sanitizeEmailHtml(m.html) : ''), [m?.html])
+  const [showRemote, setShowRemote] = useState(false)
+  const { html: safeHtml, hasRemote } = useMemo(
+    () => (m?.html ? sanitizeEmailBody(m.html, { allowRemote: showRemote }) : { html: '', hasRemote: false }),
+    [m?.html, showRemote],
+  )
   const starred = hasFlag(m, FLAG_FLAGGED)
   const unread = !hasFlag(summary, FLAG_SEEN)
   const sender = m.fromName || m.from || '(unknown)'
@@ -164,19 +170,45 @@ function Message({ summary, full, open, last, onToggle, onReply, onReplyAll, onF
           <div className="vm-sk-line" style={{ width: '80%' }} />
         </div>
       ) : safeHtml ? (
-        <div className="vm-msg-body" dangerouslySetInnerHTML={{ __html: safeHtml }} />
+        <>
+          {hasRemote && !showRemote && (
+            <div className="vm-remote-banner" role="status">
+              <span className="vm-remote-banner-text"><Icon name="eyeoff" /> Remote images blocked for your privacy.</span>
+              <button type="button" className="vm-btn vm-btn-ghost vm-sm" onClick={() => setShowRemote(true)}>Load remote images</button>
+            </div>
+          )}
+          <div className="vm-msg-body" dangerouslySetInnerHTML={{ __html: safeHtml }} />
+        </>
       ) : (
         <div className="vm-msg-body vm-plain">{m.body || ''}</div>
       )}
 
       {Array.isArray(m.attachments) && m.attachments.length > 0 && (
         <div className="vm-attach-list">
-          {m.attachments.map((a, i) => (
-            <span key={a.id || i} className="vm-attach-chip" title="Download not yet available over /v1">
-              <Icon name="attach" /> <span className="vm-attach-name">{a.filename || a.Filename || 'attachment'}</span>
-              {(a.size || a.Size) ? <span className="vm-attach-size">{fmtSize(a.size || a.Size)}</span> : null}
-            </span>
-          ))}
+          {m.attachments.map((a, i) => {
+            const name = a.filename || a.Filename || 'attachment'
+            const size = a.size || a.Size
+            if (!attachmentsSupported) {
+              return (
+                <span key={a.id || i} className="vm-attach-chip" title="Attachment download is not available on this server">
+                  <Icon name="attach" /> <span className="vm-attach-name">{name}</span>
+                  {size ? <span className="vm-attach-size">{fmtSize(size)}</span> : null}
+                </span>
+              )
+            }
+            return (
+              <button
+                key={a.id || i}
+                type="button"
+                className="vm-attach-chip vm-attach-dl"
+                title={`Download ${name}`}
+                onClick={() => onDownloadAttachment?.(m.id, attachPartId(a, m.id), name)}
+              >
+                <Icon name="attach" /> <span className="vm-attach-name">{name}</span>
+                {size ? <span className="vm-attach-size">{fmtSize(size)}</span> : null}
+              </button>
+            )
+          })}
         </div>
       )}
 
@@ -187,6 +219,23 @@ function Message({ summary, full, open, last, onToggle, onReply, onReplyAll, onF
       </footer>
     </article>
   )
+}
+
+/**
+ * Resolve the MIME part id for an attachment. Prefers an explicit `partId`;
+ * otherwise derives it from a composite `id` of the form "<uid>/<partId>"
+ * (lilmail surfaces attachment ids this way), falling back to the raw id.
+ */
+function attachPartId(a, uid) {
+  if (a.partId != null) return a.partId
+  if (a.PartId != null) return a.PartId
+  const id = a.id ?? a.ID
+  if (id == null) return ''
+  const s = String(id)
+  const prefix = String(uid ?? '') + '/'
+  if (s.startsWith(prefix)) return s.slice(prefix.length)
+  const slash = s.indexOf('/')
+  return slash >= 0 ? s.slice(slash + 1) : s
 }
 
 function fmtSize(bytes) {

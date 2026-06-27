@@ -272,6 +272,16 @@ export function createMockClient() {
       if (i >= 0 && store[toFolder]) { const [m] = list.splice(i, 1); store[toFolder].unshift(m) }
       return null
     },
+    downloadAttachment: async (uid, partId, filename) => {
+      const blob = new Blob([`Demo attachment ${filename || partId} (uid ${uid})`], { type: 'text/plain' })
+      if (typeof document !== 'undefined' && typeof URL !== 'undefined' && URL.createObjectURL) {
+        const href = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = href; a.download = filename || 'attachment'; document.body.appendChild(a)
+        a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(href), 0)
+      }
+      return blob
+    },
     sendMessage: async (draft) => { console.log('demo send', draft); return { sent: true } },
     saveDraft: async (draft) => { console.log('demo draft', draft); return { saved: true } },
     listEvents: async () => calSeed.map((e) => ({ ...e })),

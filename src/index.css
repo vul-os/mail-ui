@@ -342,6 +342,16 @@
 .vm-attach-chip .vm-icon { width: 14px; height: 14px; color: var(--text-faint); }
 .vm-attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vm-attach-size { color: var(--text-faint); flex: none; }
+.vm-attach-dl { cursor: pointer; font: inherit; text-align: left; transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease); }
+.vm-attach-dl:hover { border-color: var(--accent); background: var(--bg-hover); color: var(--text-primary); }
+.vm-attach-dl:hover .vm-icon { color: var(--accent); }
+.vm-attach-dl:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Remote-content (privacy) banner ──────────────────────────────────────── */
+.vm-remote-banner { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin: 0 20px 14px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg-elevated); color: var(--text-tertiary); font-size: 12.5px; }
+.vm-remote-banner-text { display: inline-flex; align-items: center; gap: 7px; }
+.vm-remote-banner-text .vm-icon { width: 15px; height: 15px; color: var(--text-faint); flex: none; }
+.vm-remote-banner .vm-btn { margin-left: auto; }
 
 .vm-mobile-actions { display: none; }
 

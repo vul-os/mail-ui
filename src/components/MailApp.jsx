@@ -60,6 +60,7 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
   const [railCollapsed, setRailCollapsed] = useState(false)
   const [toasts, setToasts] = useState([])
   const [moveSupported, setMoveSupported] = useState(true)
+  const [attachmentsSupported, setAttachmentsSupported] = useState(true)
 
   const searchRef = useRef(null)
 
@@ -314,6 +315,24 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
     )
   }, [canArchive, targetsOf, removeIds, openThread, client, archiveFolder, folder, handleError, loadList, toast, undoable])
 
+  // ── Attachment download ────────────────────────────────────────────────────
+  // Optional /v1 route; on 404/405 we disable the chips (capability probe),
+  // mirroring archive. The actual save is a blob download — never innerHTML.
+  const canDownload = attachmentsSupported && typeof client.downloadAttachment === 'function'
+  const downloadAttachment = useCallback(async (uid, partId, filename) => {
+    if (typeof client.downloadAttachment !== 'function') { setAttachmentsSupported(false); return }
+    try {
+      await client.downloadAttachment(uid, partId, filename)
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 404 || e.status === 405)) {
+        setAttachmentsSupported(false)
+        toast('Attachment download is not available on this server', 'error')
+      } else {
+        toast(handleError(e), 'error')
+      }
+    }
+  }, [client, toast, handleError])
+
   // ── Selection ──────────────────────────────────────────────────────────────
   const toggleSelect = useCallback((id) => {
     setSelection((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -461,6 +480,8 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
           fullById={fullById}
           onNeedBody={needBody}
           canArchive={canArchive}
+          attachmentsSupported={canDownload}
+          onDownloadAttachment={downloadAttachment}
           onToggleStar={(next) => openThread && toggleStar(openThread, next)}
           onArchive={() => openThread && archiveThreads(openThread)}
           onDelete={() => openThread && deleteThreads(openThread)}
