@@ -14,6 +14,12 @@
   height: 100%;
   min-height: 0;
   position: relative;
+  /* <MailApp/> is embeddable (e.g. in the Vulos Workspace shell, beside the
+     suite's own global calendar panel), so the component is frequently far
+     narrower than the viewport. Make it a size container so the space-sensitive
+     layout below responds to the COMPONENT's width, not the viewport — it must
+     degrade gracefully when narrow instead of overflowing. */
+  container: vm-app / inline-size;
   font-family: var(--font-mono);
   font-size: 13.5px;
   line-height: 1.5;
@@ -601,15 +607,30 @@
 /* ════════════════════════════════════════════════════════════════════════
    Responsive
    ════════════════════════════════════════════════════════════════════════ */
-/* The persistent calendar panel needs real width to be useful — hide it on
-   mid-size viewports (it stays reachable via the rail toggle on wider screens,
-   and via the mobile drawer's Calendar entry below). */
-@media (max-width: 1200px) {
+/* The persistent calendar panel needs real width to be useful — hide it when
+   the COMPONENT (not the viewport) is mid-size or narrower (it stays reachable
+   via the rail toggle when the component is wide, and via the mobile drawer's
+   Calendar entry below). Container-driven so an embedded MailApp sized down by a
+   host (e.g. the Workspace shell's own calendar panel) hides it too, rather than
+   colliding the fixed-width list with it. */
+@container vm-app (max-width: 1200px) {
   .vm-calpanel { display: none; }
 }
 /* Avoid stacking two right-hand panels: the wide overlay panel (contacts /
    settings / expanded calendar) takes precedence over the persistent mini one. */
 .vm-app[data-panel-open="1"] .vm-calpanel { display: none; }
+
+/* Below the width a fixed list + reading pane can comfortably share, collapse to
+   a single pane (container-driven, so it also triggers when embedded narrow).
+   The list flexes to fill its column — never overflowing it onto a neighbouring
+   panel — and an open thread takes over the pane with a Back affordance. */
+@container vm-app (max-width: 980px) {
+  .vm-list { width: auto; flex: 1; }
+  .vm-app[data-open="0"] .vm-read { display: none; }
+  .vm-app[data-open="1"] .vm-list { display: none; }
+  .vm-app[data-open="1"] .vm-read { display: block; flex: 1; }
+  .vm-app[data-open="1"] .vm-back { display: grid; }
+}
 
 @media (max-width: 1024px) {
   .vm-panel { position: absolute; right: 52px; top: 0; bottom: 0; z-index: 45; box-shadow: var(--shadow-pop); }
