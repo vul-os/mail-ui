@@ -175,6 +175,17 @@ export function createMailClient(opts = {}) {
       const data = await request('/contacts', { query: { q, limit } })
       return data.contacts ?? []
     },
+
+    // ── Account / capability probes (optional; older servers may 404) ─────
+
+    /**
+     * GET /v1/quota → { used, limit } in bytes (mailbox storage).
+     * Optional endpoint: rejects with ApiError(404) on servers without it, so
+     * the UI hides the storage meter rather than showing a dead control.
+     */
+    quota() {
+      return request('/quota')
+    },
   }
 }
 

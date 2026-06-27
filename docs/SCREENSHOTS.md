@@ -9,10 +9,21 @@ IMAP / SMTP / CalDAV / CardDAV server and **no credentials** are required.
 
 | File | Description | Status |
 |------|-------------|--------|
-| `docs/screenshots/hero.png` | Three-pane mail view with a message open (hero) | Real — mock `/v1` |
-| `docs/screenshots/mail.png` | `<MailApp/>` three-pane (folders \| list \| reading pane) | Real — mock `/v1` |
-| `docs/screenshots/calendar.png` | `<Calendar/>` month view with seeded events | Real — mock `/v1` |
-| `docs/screenshots/contacts.png` | `<Contacts/>` list | Real — mock `/v1` |
+| `docs/screenshots/inbox.png` | Full layout: comprehensive sidebar \| list \| reading pane \| calendar panel \| rail | Real — mock `/v1` |
+| `docs/screenshots/hero.png` | Open conversation alongside the right calendar side panel (hero) | Real — mock `/v1` |
+| `docs/screenshots/mail.png` | `<MailApp/>` inbox (alias) | Real — mock `/v1` |
+| `docs/screenshots/sidebar.png` | Left rail: primary mailboxes, More, Categories, Labels, storage | Real — mock `/v1` |
+| `docs/screenshots/thread.png` | Conversation view (collapsible thread, latest expanded) | Real — mock `/v1` |
+| `docs/screenshots/compose.png` | Docked compose with contact autocomplete + rich text | Real — mock `/v1` |
+| `docs/screenshots/search.png` | Search results with active-query chip | Real — mock `/v1` |
+| `docs/screenshots/calendar.png` | Right calendar panel: mini month + upcoming agenda | Real — mock `/v1` |
+| `docs/screenshots/calendar-expanded.png` | Right calendar panel expanded to the full month grid | Real — mock `/v1` |
+| `docs/screenshots/contacts.png` | `<Contacts/>` side panel | Real — mock `/v1` |
+| `docs/screenshots/account.png` | Account surface (`settingsExtra`): identity, IMAP/SMTP setup, password | Real — mock `/v1` |
+| `docs/screenshots/settings.png` | Settings: inbox type, theme, notifications, calendar, labels, storage | Real — mock `/v1` |
+| `docs/screenshots/panel-thread.png` | Overlay panel + open conversation (list collapses) | Real — mock `/v1` |
+| `docs/screenshots/mobile.png` | Mobile single-pane inbox (≤768px) | Real — mock `/v1` |
+| `docs/screenshots/mobile-drawer.png` | Mobile drawer: full sidebar + tools | Real — mock `/v1` |
 
 ## Regenerate
 

@@ -119,12 +119,77 @@ const archive = [
   },
 ]
 
+// Category mailboxes (Gmail-style tabs, mapped gracefully to IMAP folders).
+const social = [
+  {
+    id: '5001', from: 'notifications@chirp.social', fromName: 'Chirp', to: 'me@vulos.org',
+    subject: 'Nadia and 4 others reacted to your post',
+    preview: 'Your post about self-hosted email is getting attention.',
+    html: '<p>Your post about self-hosted email is getting attention.</p>',
+    date: ago(3 * H), flags: [], messageId: '<soc-1@chirp.social>',
+  },
+  {
+    id: '5002', from: 'jobs@linkedup.com', fromName: 'LinkedUp', to: 'me@vulos.org',
+    subject: '7 new roles match “Platform Engineer”',
+    preview: 'New openings in your network this week.',
+    html: '<p>New openings in your network this week.</p>',
+    date: ago(1.2 * D), flags: ['\\Seen'], messageId: '<soc-2@linkedup.com>',
+  },
+]
+const promotions = [
+  {
+    id: '6001', from: 'deals@cloudhost.com', fromName: 'CloudHost', to: 'me@vulos.org',
+    subject: '40% off dedicated servers — this week only',
+    preview: 'Upgrade your infra and save. Limited-time pricing on all plans.',
+    html: '<p>Upgrade your infra and save. Limited-time pricing on all plans.</p>',
+    date: ago(7 * H), flags: [], messageId: '<promo-1@cloudhost.com>',
+  },
+]
+const updates = [
+  {
+    id: '7001', from: 'receipts@cloudhost.com', fromName: 'CloudHost Billing', to: 'me@vulos.org',
+    subject: 'Your June receipt',
+    preview: 'Thanks for your payment of $24.00.',
+    html: '<p>Thanks for your payment of $24.00.</p>',
+    date: ago(20 * H), flags: ['\\Seen'], hasAttachments: true, messageId: '<upd-1@cloudhost.com>',
+    attachments: [{ id: '7001/1', filename: 'receipt-june.pdf', contentType: 'application/pdf', size: 24100 }],
+  },
+]
+
+// User labels (custom IMAP folders) — one nested to exercise the tree.
+const work = [
+  {
+    id: '8001', from: 'client@acme.co', fromName: 'Acme Co', to: 'me@vulos.org',
+    subject: 'Statement of work — Q3 engagement',
+    preview: 'Attaching the signed SOW for the Q3 platform work.',
+    html: '<p>Attaching the signed SOW for the Q3 platform work.</p>',
+    date: ago(1.1 * D), flags: ['\\Seen'], messageId: '<work-1@acme.co>',
+  },
+]
+const personal = [
+  {
+    id: '9001', from: 'mom@family.net', fromName: 'Mom', to: 'me@vulos.org',
+    subject: 'Sunday lunch?',
+    preview: 'Are you coming over this Sunday? Bring the dog!',
+    html: '<p>Are you coming over this Sunday? Bring the dog!</p>',
+    date: ago(2.3 * D), flags: [], messageId: '<pers-1@family.net>',
+  },
+]
+
 const FOLDERS = () => ({
   INBOX: inbox.map(clone),
   Sent: sent.map(clone),
   Drafts: drafts.map(clone),
   Archive: archive.map(clone),
   Trash: [],
+  Spam: [],
+  Social: social.map(clone),
+  Promotions: promotions.map(clone),
+  Updates: updates.map(clone),
+  Work: work.map(clone),
+  'Work/Clients': [],
+  Personal: personal.map(clone),
+  Receipts: [],
 })
 
 const clone = (m) => ({ ...m, flags: [...(m.flags || [])] })
@@ -159,13 +224,27 @@ export function createMockClient() {
 
   return {
     me: async () => ({ email: 'me@vulos.org', username: 'me' }),
-    listFolders: async () => [
-      { path: 'INBOX', name: 'INBOX', attributes: ['\\Inbox'], unread: store.INBOX.filter((m) => !m.flags.includes('\\Seen')).length },
-      { path: 'Sent', name: 'Sent', attributes: ['\\Sent'] },
-      { path: 'Drafts', name: 'Drafts', attributes: ['\\Drafts'], unread: store.Drafts.length },
-      { path: 'Archive', name: 'Archive', attributes: ['\\Archive'] },
-      { path: 'Trash', name: 'Trash', attributes: ['\\Trash'] },
-    ],
+    listFolders: async () => {
+      const unseen = (k) => (store[k] || []).filter((m) => !m.flags.includes('\\Seen')).length
+      return [
+        { path: 'INBOX', name: 'INBOX', attributes: ['\\Inbox'], unread: unseen('INBOX') },
+        { path: 'Sent', name: 'Sent', attributes: ['\\Sent'] },
+        { path: 'Drafts', name: 'Drafts', attributes: ['\\Drafts'], unread: store.Drafts.length },
+        { path: 'Archive', name: 'Archive', attributes: ['\\Archive'] },
+        { path: 'Spam', name: 'Spam', attributes: ['\\Junk'], unread: unseen('Spam') },
+        { path: 'Trash', name: 'Trash', attributes: ['\\Trash'] },
+        // Categories (mapped to IMAP folders).
+        { path: 'Social', name: 'Social', attributes: [], unread: unseen('Social') },
+        { path: 'Promotions', name: 'Promotions', attributes: [], unread: unseen('Promotions') },
+        { path: 'Updates', name: 'Updates', attributes: [], unread: unseen('Updates') },
+        // User labels (one nested).
+        { path: 'Work', name: 'Work', attributes: [], unread: unseen('Work') },
+        { path: 'Work/Clients', name: 'Work/Clients', attributes: [] },
+        { path: 'Personal', name: 'Personal', attributes: [], unread: unseen('Personal') },
+        { path: 'Receipts', name: 'Receipts', attributes: [] },
+      ]
+    },
+    quota: async () => ({ used: 6.4 * 1024 * 1024 * 1024, limit: 15 * 1024 * 1024 * 1024 }),
     listMessages: async ({ folder = 'INBOX' } = {}) => (store[folder] || []).map(clone),
     getMessage: async (uid, { folder = 'INBOX' } = {}) => {
       for (const f of Object.keys(store)) { const m = find(f, uid); if (m) return clone(m) }

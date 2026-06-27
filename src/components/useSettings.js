@@ -1,6 +1,11 @@
 /**
- * useSettings.js — localStorage-persisted UI preferences (density, reading-pane
- * position, theme, keyboard-shortcuts toggle, signature, threading).
+ * useSettings.js — localStorage-persisted UI preferences.
+ *
+ * Covers appearance (theme, density), layout (reading-pane position, inbox type,
+ * conversation threading, message-list preview), the right-hand calendar panel
+ * (show/hide + expanded), desktop notifications, the keyboard-shortcuts toggle
+ * and the compose signature. All values are purely client-side preferences; any
+ * server-backed surface (account, filters, vacation…) is supplied by the host.
  */
 import { useCallback, useEffect, useState } from 'react'
 
@@ -9,9 +14,14 @@ const KEY = 'vulos-mail.settings.v1'
 export const DEFAULT_SETTINGS = {
   density: 'comfortable',     // 'comfortable' | 'compact'
   readingPane: 'right',       // 'right' | 'bottom' | 'off'
-  theme: 'system',           // 'system' (follow OS) | 'dark' | 'light'
+  theme: 'system',            // 'system' (follow OS) | 'dark' | 'light'
+  inboxType: 'default',       // 'default' | 'unread' | 'starred' (client-side sort)
+  preview: true,              // show the snippet preview line in the list
   shortcuts: true,
   threaded: true,
+  notifications: false,       // desktop notifications (browser Notification API)
+  calendarPanel: true,        // show the right-hand calendar side panel (desktop)
+  calendarExpanded: false,    // calendar panel: mini agenda vs full month
   signature: '',
 }
 

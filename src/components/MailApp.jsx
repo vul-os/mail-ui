@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createMailClient, FLAG_SEEN, FLAG_FLAGGED, ApiError } from '../api.js'
-import FolderList, { STARRED_FOLDER, classifyFolder } from './FolderList.jsx'
+import FolderList, { STARRED_FOLDER, classifyFolder, classifyCategory } from './FolderList.jsx'
 import MessageList from './MessageList.jsx'
 import MessageView from './MessageView.jsx'
 import Compose from './Compose.jsx'
 import Settings from './Settings.jsx'
 import Calendar from './Calendar.jsx'
+import CalendarPanel from './CalendarPanel.jsx'
 import Contacts from './Contacts.jsx'
 import ShortcutsHelp from './ShortcutsHelp.jsx'
 import Icon from './Icon.jsx'
@@ -39,6 +40,7 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
   const [settings, setSettings] = useSettings()
   const [me, setMe] = useState(null)
   const [folders, setFolders] = useState([])
+  const [quota, setQuota] = useState(null)
   const [folder, setFolder] = useState('INBOX')
   const [query, setQuery] = useState('')
   const [messages, setMessages] = useState([])
@@ -122,8 +124,21 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
     let live = true
     client.me().then((m) => live && setMe(m)).catch(() => {})
     client.listFolders().then((f) => live && setFolders(f || [])).catch(() => {})
+    // Optional storage meter — older /v1 servers 404; degrade by hiding it.
+    if (typeof client.quota === 'function') {
+      client.quota().then((q) => live && setQuota(q || null)).catch(() => {})
+    }
     return () => { live = false }
   }, [client])
+
+  // User labels (custom folders that aren't specials or categories) — fed to the
+  // sidebar's Labels section + the Settings overview.
+  const labels = useMemo(
+    () => folders
+      .filter((f) => classifyFolder(f) === 'label' && !classifyCategory(f))
+      .map((f) => ({ path: f.path ?? f.name, label: f.name ?? f.path })),
+    [folders],
+  )
 
   // Archive target folder (from special-use); archive hidden when absent.
   const archiveFolder = useMemo(() => {
@@ -161,10 +176,14 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
 
   useEffect(() => { loadList() }, [loadList])
 
-  const threads = useMemo(
-    () => groupThreads(messages, { threaded: settings.threaded && folder !== STARRED_FOLDER }),
-    [messages, settings.threaded, folder],
-  )
+  const threads = useMemo(() => {
+    const grouped = groupThreads(messages, { threaded: settings.threaded && folder !== STARRED_FOLDER })
+    // Inbox type re-orders the list (client-side, stable so date order holds
+    // within each bucket). 'default' keeps newest-active first.
+    if (settings.inboxType === 'unread') return [...grouped].sort((a, b) => (b.unread ? 1 : 0) - (a.unread ? 1 : 0))
+    if (settings.inboxType === 'starred') return [...grouped].sort((a, b) => (b.starred ? 1 : 0) - (a.starred ? 1 : 0))
+    return grouped
+  }, [messages, settings.threaded, folder, settings.inboxType])
   const starredCount = useMemo(
     () => messages.filter((m) => (m.flags || []).includes(FLAG_FLAGGED)).length,
     [messages],
@@ -338,6 +357,11 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
 
   const togglePanel = useCallback((name) => setPanel((p) => (p === name ? 'none' : name)), [])
 
+  // The persistent right-hand calendar side panel (separate from the wide
+  // overlay panel). Show/hide + expanded state persist via useSettings.
+  const calendarAvailable = typeof client.listEvents === 'function'
+  const showCalPanel = settings.calendarPanel !== false && calendarAvailable
+
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   const moveFocus = useCallback((delta) => {
     setFocusIdx((i) => {
@@ -384,6 +408,8 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
       data-pane={mobilePane}
       data-drawer={drawerOpen ? '1' : '0'}
       data-panel-open={panel !== 'none' ? '1' : '0'}
+      data-calpanel={showCalPanel ? (settings.calendarExpanded ? 'expanded' : '1') : '0'}
+      data-preview={settings.preview === false ? '0' : '1'}
     >
       {drawerOpen && <div className="vm-scrim" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
 
@@ -391,11 +417,13 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
         folders={folders}
         current={folder}
         me={me}
+        quota={quota}
         collapsed={railCollapsed}
         starredCount={starredCount}
         onToggleCollapse={() => setRailCollapsed((v) => !v)}
         onSelect={selectFolder}
         onCompose={() => openCompose()}
+        onManageLabels={() => { setPanel('settings'); setDrawerOpen(false) }}
         onOpenPanel={(name) => { setPanel(name); setDrawerOpen(false) }}
         onOpenHelp={() => { setHelpOpen(true); setDrawerOpen(false) }}
       />
@@ -443,9 +471,22 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
         />
       </div>
 
+      {/* Persistent right-hand calendar side panel (desktop; hidden ≤1200px). */}
+      {showCalPanel && (
+        <CalendarPanel
+          client={client}
+          onAuthError={onAuthError}
+          expanded={settings.calendarExpanded}
+          onToggleExpand={() => setSettings((s) => ({ calendarExpanded: !s.calendarExpanded }))}
+          onHide={() => setSettings({ calendarPanel: false })}
+        />
+      )}
+
       {/* Far-right app rail (Gmail-style side panel toggles). */}
       <aside className="vm-rightrail" aria-label="Side panels">
-        <button type="button" className={'vm-iconbtn' + (panel === 'calendar' ? ' vm-on' : '')} aria-label="Calendar" title="Calendar" onClick={() => togglePanel('calendar')}><Icon name="calendar" /></button>
+        {calendarAvailable && (
+          <button type="button" className={'vm-iconbtn' + (showCalPanel ? ' vm-on' : '')} aria-label="Calendar" title={showCalPanel ? 'Hide calendar' : 'Show calendar'} onClick={() => setSettings((s) => ({ calendarPanel: !(s.calendarPanel !== false) }))}><Icon name="calendar" /></button>
+        )}
         <button type="button" className={'vm-iconbtn' + (panel === 'contacts' ? ' vm-on' : '')} aria-label="Contacts" title="Contacts" onClick={() => togglePanel('contacts')}><Icon name="users" /></button>
         <button type="button" className={'vm-iconbtn' + (panel === 'settings' ? ' vm-on' : '')} aria-label="Settings" title="Settings" onClick={() => togglePanel('settings')}><Icon name="settings" /></button>
         <span className="vm-spacer" />
@@ -454,7 +495,7 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
 
       {panel !== 'none' && (
         <aside className="vm-panel" aria-label={panel}>
-          {panel === 'settings' && <Settings settings={settings} onChange={setSettings} onClose={() => setPanel('none')} extra={settingsExtra} />}
+          {panel === 'settings' && <Settings settings={settings} onChange={setSettings} onClose={() => setPanel('none')} extra={settingsExtra} labels={labels} quota={quota} onShowShortcuts={() => { setHelpOpen(true); setPanel('none') }} />}
           {panel === 'calendar' && (
             <div className="vm-panel-embed">
               <div className="vm-panel-head"><h2><Icon name="calendar" className="vm-icon" /> Calendar</h2><button type="button" className="vm-iconbtn" aria-label="Close" onClick={() => setPanel('none')}><Icon name="close" /></button></div>

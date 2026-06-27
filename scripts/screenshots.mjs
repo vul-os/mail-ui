@@ -99,12 +99,22 @@ async function main() {
   try {
     await page.goto(baseUrl, { waitUntil: 'networkidle' })
     await page.waitForSelector('.vm-row', { timeout: 10000 })
+    await page.waitForSelector('.vm-calpanel', { timeout: 5000 }).catch(() => {})
     await settle()
 
-    // ── Inbox: three-pane list (reading pane empty placeholder).
-    console.log('\nCapturing: inbox (three-pane)')
-    await shot(page, 'inbox', 'Three-pane inbox (rail | list | reading pane)')
-    await shot(page, 'mail', 'Three-pane inbox (alias)')
+    // ── Inbox: full layout — comprehensive sidebar | list | reading pane |
+    //    persistent calendar panel | app rail.
+    console.log('\nCapturing: inbox (full layout)')
+    await shot(page, 'inbox', 'Comprehensive sidebar | list | reading pane | calendar panel | rail')
+    await shot(page, 'mail', 'Inbox (alias)')
+
+    // ── Sidebar detail: expand "More" + reveal Categories / Labels.
+    console.log('Capturing: sidebar')
+    await page.getByRole('button', { name: 'More' }).click().catch(() => {})
+    await settle(200)
+    await shot(page, 'sidebar', 'Left rail: primary mailboxes, More, Categories, Labels, storage')
+    await page.getByRole('button', { name: 'Less' }).click().catch(() => {})
+    await settle(150)
 
     // ── Thread: open the multi-message roadmap conversation.
     console.log('Capturing: thread')
@@ -112,16 +122,16 @@ async function main() {
     await page.waitForSelector('.vm-msg-body', { timeout: 5000 }).catch(() => {})
     await settle()
     await shot(page, 'thread', 'Conversation view (collapsible thread, latest expanded)')
-    await shot(page, 'hero', 'Hero — open conversation in the three-pane view')
+    await shot(page, 'hero', 'Hero — open conversation with the calendar side panel')
 
-    // ── Side panel open alongside an open thread: the list collapses so the
-    //    reading pane keeps a usable width (no header overlap).
+    // ── Overlay panel (Contacts) alongside an open thread: the list collapses so
+    //    the reading pane keeps a usable width (no header overlap).
     console.log('Capturing: panel + thread')
-    await page.getByRole('button', { name: 'Calendar' }).click()
+    await page.getByRole('button', { name: 'Contacts' }).click()
     await page.waitForSelector('.vm-panel', { timeout: 5000 })
     await settle()
-    await shot(page, 'panel-thread', 'Side panel + open conversation (list collapses, reading pane keeps width)')
-    await page.getByRole('button', { name: 'Calendar' }).click() // close panel
+    await shot(page, 'panel-thread', 'Overlay panel + open conversation (list collapses, reading pane keeps width)')
+    await page.getByRole('button', { name: 'Contacts' }).click() // close panel
     await settle(200)
 
     // ── Search: query + results + active-query chip.
@@ -153,16 +163,16 @@ async function main() {
     await page.waitForSelector('.vm-compose', { state: 'detached', timeout: 5000 }).catch(() => {})
     await settle(200)
 
-    // ── Calendar side panel.
-    console.log('Capturing: calendar')
-    await page.getByRole('button', { name: 'Calendar' }).click()
-    await page.waitForSelector('.vm-cal', { timeout: 5000 })
-    // The narrow side panel defaults to Agenda; switch to Month for the grid shot.
-    await page.getByRole('tab', { name: 'Month' }).click()
-    await page.waitForSelector('.vm-cal-grid', { timeout: 5000 })
+    // ── Calendar side panel — mini (collapsed) + expanded full month.
+    console.log('Capturing: calendar (mini + expanded)')
+    await page.waitForSelector('.vm-calpanel', { timeout: 5000 }).catch(() => {})
+    await shot(page, 'calendar', 'Right calendar panel: mini month + upcoming agenda')
+    await page.getByRole('button', { name: 'Expand calendar' }).click().catch(() => {})
+    await page.waitForSelector('.vm-calpanel-full .vm-cal-grid', { timeout: 5000 }).catch(() => {})
     await settle()
-    await shot(page, 'calendar', 'Calendar month view (side panel)')
-    await page.getByRole('button', { name: 'Calendar' }).click()
+    await shot(page, 'calendar-expanded', 'Right calendar panel expanded to the full month grid')
+    await page.getByRole('button', { name: 'Collapse calendar' }).click().catch(() => {})
+    await settle(200)
 
     // ── Contacts side panel.
     console.log('Capturing: contacts')
@@ -179,13 +189,13 @@ async function main() {
     await settle()
     // Top of the panel: the standalone account / mail-client-setup surface.
     await shot(page, 'account', 'Account: identity, IMAP/SMTP client setup, change password, sign out')
-    // Scroll to the built-in preferences (theme/density/layout/composing).
+    // Scroll to the built-in preferences (general/appearance/notifications/labels/storage).
     await page.evaluate(() => {
       const body = document.querySelector('.vm-settings .vm-panel-body')
-      if (body) body.scrollTop = body.scrollHeight
+      if (body) body.scrollTop = body.scrollHeight * 0.42
     })
     await settle()
-    await shot(page, 'settings', 'Settings: theme (auto/dark/light), density, reading pane, signature')
+    await shot(page, 'settings', 'Settings: inbox type, theme, notifications, labels, storage, signature')
 
     // ── Mobile: single-pane inbox at 390px (reload resets panel state).
     console.log('Capturing: mobile')

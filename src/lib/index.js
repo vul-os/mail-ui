@@ -7,7 +7,9 @@
 
 export { default as MailApp } from '../components/MailApp.jsx'
 export { default as Calendar } from '../components/Calendar.jsx'
+export { default as CalendarPanel } from '../components/CalendarPanel.jsx'
 export { default as Contacts } from '../components/Contacts.jsx'
+export { default as Logo } from '../components/Logo.jsx'
 export { default as FolderList } from '../components/FolderList.jsx'
 export { default as MessageList } from '../components/MessageList.jsx'
 export { default as MessageView } from '../components/MessageView.jsx'

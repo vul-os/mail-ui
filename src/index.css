@@ -83,6 +83,13 @@
 .vm-brand-mark { color: var(--brand); width: 19px; height: 19px; }
 .vm-collapsed .vm-brand-text { display: none; }
 
+/* ── Brand logo (distinctive mark + wordmark) ──────────────────────────────── */
+.vm-logo { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.vm-logo-mark { width: 26px; height: 26px; flex: none; border-radius: 8px; box-shadow: var(--shadow-1); }
+.vm-logo-word { font-family: var(--font-sans); font-weight: 700; font-size: 16px; letter-spacing: -.03em; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vm-logo-word b { font-weight: 700; color: var(--brand); margin-left: 1px; }
+[data-theme="light"] .vm-logo-word b { color: var(--accent); }
+
 .vm-compose-btn {
   display: flex; align-items: center; gap: var(--sp-3);
   padding: 11px 16px; margin: var(--sp-1) 2px var(--sp-2);
@@ -97,7 +104,9 @@
 .vm-collapsed .vm-compose-btn { justify-content: center; padding: 11px; }
 .vm-collapsed .vm-compose-label { display: none; }
 
-.vm-folders { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; overflow-y: auto; flex: 1; }
+/* Scroll region holding the primary list + Categories + Labels groups. */
+.vm-folders-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-1); }
+.vm-folders { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
 .vm-folder {
   display: flex; align-items: center; gap: var(--sp-3);
   padding: 8px 12px; width: 100%; text-align: left;
@@ -114,8 +123,33 @@
 .vm-folder.vm-active .vm-folder-count { color: var(--accent); }
 .vm-collapsed .vm-folder-name, .vm-collapsed .vm-folder-count { display: none; }
 .vm-collapsed .vm-folder { justify-content: center; border-radius: var(--radius); padding: 9px; }
-.vm-folder-section { padding: 14px 12px 4px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); }
+.vm-folder-section { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 4px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); }
 .vm-collapsed .vm-folder-section { display: none; }
+.vm-section-action { display: grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-sm); color: var(--text-faint); }
+.vm-section-action:hover { color: var(--accent); background: var(--bg-hover); }
+.vm-section-action .vm-icon { width: 15px; height: 15px; }
+
+/* "More" disclosure toggle in the primary group. */
+.vm-more-toggle { color: var(--text-muted); }
+.vm-more-toggle .vm-icon { width: 15px; height: 15px; }
+.vm-collapsed .vm-more-toggle { display: none; }
+
+/* Coloured label dots (Gmail-style) + nesting. */
+.vm-label-dot { width: 11px; height: 11px; flex: none; border-radius: 3px; }
+.vm-folder-nested { font-size: 12.5px; }
+.vm-collapsed .vm-folder-nested { padding-left: 9px !important; }
+
+/* ── Storage / quota footer ────────────────────────────────────────────────── */
+.vm-quota { display: flex; flex-direction: column; gap: 6px; padding: var(--sp-2) var(--sp-2) var(--sp-1); border-top: 1px solid var(--border-subtle); }
+.vm-quota-head { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-muted); }
+.vm-quota-head .vm-icon { width: 15px; height: 15px; color: var(--text-faint); }
+.vm-quota-text { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vm-quota-bar { height: 6px; border-radius: var(--radius-pill); background: var(--bg-elevated); overflow: hidden; }
+.vm-quota-bar-lg { height: 8px; }
+.vm-quota-fill { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--accent); transition: width var(--dur-slow) var(--ease); }
+.vm-quota-fill.vm-quota-full { background: var(--danger); }
+.vm-collapsed .vm-quota-head .vm-quota-text { display: none; }
+.vm-collapsed .vm-quota { align-items: center; }
 
 /* Mobile-only drawer extras (Calendar / Contacts / Settings / Shortcuts) — on
    desktop these live in the far-right rail (hidden ≤768px), so surface them
@@ -242,6 +276,8 @@
 .vm-row-subj { font-size: 12.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vm-attach-dot { width: 13px; height: 13px; color: var(--text-faint); flex: none; }
 .vm-row-snip { font-size: 12px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Preview-text toggle (Settings → General). */
+.vm-app[data-preview="0"] .vm-row-snip { display: none; }
 
 .vm-row-actions { display: none; align-items: center; gap: 1px; flex: none; }
 .vm-row:hover .vm-row-actions { display: flex; }
@@ -313,6 +349,41 @@
 .vm-rightrail { flex: none; width: 52px; display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); padding: var(--sp-2) 0; background: var(--bg-base); border-left: 1px solid var(--border-default); }
 .vm-rightrail .vm-iconbtn.vm-on { background: var(--accent-soft); }
 
+/* ── Persistent calendar side panel (mini month + agenda) ──────────────────── */
+.vm-calpanel { flex: none; width: 304px; display: flex; flex-direction: column; min-width: 0; background: var(--bg-surface); border-left: 1px solid var(--border-default); overflow: hidden; }
+.vm-calpanel-expanded { width: 392px; }
+.vm-calpanel-head { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border-subtle); }
+.vm-calpanel-head h2 { display: flex; align-items: center; gap: var(--sp-2); margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+.vm-calpanel-head h2 .vm-icon { color: var(--brand); width: 17px; height: 17px; }
+.vm-calpanel-actions { display: flex; align-items: center; gap: 1px; }
+.vm-calpanel-body { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3); overflow-y: auto; min-height: 0; }
+.vm-calpanel-full { flex: 1; min-height: 0; display: flex; }
+.vm-calpanel-full .vm-cal { flex: 1; min-height: 0; }
+
+.vm-mini { background: var(--bg-base); border: 1px solid var(--border-default); border-radius: var(--radius); padding: var(--sp-3); }
+.vm-mini-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-2); }
+.vm-mini-title { font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
+.vm-mini-nav { display: flex; gap: 1px; }
+.vm-mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+.vm-mini-dow { display: grid; place-items: center; height: 22px; font-size: 10px; color: var(--text-faint); text-transform: uppercase; }
+.vm-mini-day { position: relative; display: grid; place-items: center; aspect-ratio: 1; min-height: 30px; border-radius: var(--radius-sm); font-size: 12px; color: var(--text-secondary); transition: background var(--dur), color var(--dur); }
+.vm-mini-day:hover { background: var(--bg-hover); color: var(--text-primary); }
+.vm-mini-day.vm-muted { color: var(--text-dim); }
+.vm-mini-day.vm-today { background: var(--accent); color: var(--on-accent); font-weight: 700; }
+.vm-mini-dot { position: absolute; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+.vm-mini-day.vm-today .vm-mini-dot { background: var(--on-accent); }
+
+.vm-calpanel-agenda { display: flex; flex-direction: column; gap: var(--sp-2); }
+.vm-calpanel-agenda-title { margin: 0; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--text-faint); }
+.vm-calpanel-empty { margin: 0; font-size: 12px; color: var(--text-faint); padding: var(--sp-2) 0; }
+.vm-mini-agenda { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.vm-mini-ev { display: flex; align-items: stretch; gap: var(--sp-2); padding: 7px 8px; border-radius: var(--radius-sm); transition: background var(--dur); }
+.vm-mini-ev:hover { background: var(--bg-hover); }
+.vm-mini-ev-rail { flex: none; width: 3px; border-radius: var(--radius-pill); background: var(--accent); }
+.vm-mini-ev-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.vm-mini-ev-sum { font-size: 12.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vm-mini-ev-when { font-size: 11px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ── Side panel (calendar / contacts / settings) ──────────────────────────── */
 .vm-panel { flex: none; width: var(--panel-w); display: flex; flex-direction: column; min-width: 0; background: var(--bg-surface); border-left: 1px solid var(--border-default); overflow: hidden; }
 .vm-panel-embed { display: flex; flex-direction: column; height: 100%; min-height: 0; }
@@ -324,7 +395,11 @@
 .vm-settings { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .vm-panel-body { padding: var(--sp-4); overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-5); }
 .vm-set-section { display: flex; flex-direction: column; gap: var(--sp-3); }
-.vm-set-section-title { margin: 0; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--text-faint); }
+.vm-set-section-title { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--text-faint); }
+.vm-set-section-icon { width: 14px; height: 14px; color: var(--text-ghost); }
+.vm-set-labels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.vm-set-label-row { display: flex; align-items: center; gap: var(--sp-2); padding: 6px 2px; }
+.vm-set-label-name { font-size: 12.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vm-set-group { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-4); background: var(--bg-base); border: 1px solid var(--border-default); border-radius: var(--radius); }
 .vm-set-row { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .vm-set-inline { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--sp-3); }
@@ -516,6 +591,16 @@
 /* ════════════════════════════════════════════════════════════════════════
    Responsive
    ════════════════════════════════════════════════════════════════════════ */
+/* The persistent calendar panel needs real width to be useful — hide it on
+   mid-size viewports (it stays reachable via the rail toggle on wider screens,
+   and via the mobile drawer's Calendar entry below). */
+@media (max-width: 1200px) {
+  .vm-calpanel { display: none; }
+}
+/* Avoid stacking two right-hand panels: the wide overlay panel (contacts /
+   settings / expanded calendar) takes precedence over the persistent mini one. */
+.vm-app[data-panel-open="1"] .vm-calpanel { display: none; }
+
 @media (max-width: 1024px) {
   .vm-panel { position: absolute; right: 52px; top: 0; bottom: 0; z-index: 45; box-shadow: var(--shadow-pop); }
 }
