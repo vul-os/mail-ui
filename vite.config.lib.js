@@ -9,12 +9,33 @@
 
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { copyFileSync } from 'fs'
 import { resolve } from 'path'
 
 const dir = import.meta.dirname
 
+/**
+ * Emit the hand-authored TypeScript declarations into dist-lib/.
+ *
+ * The library is JS/JSX, so its public types are maintained by hand in types/
+ * and copied verbatim alongside the bundles. This makes the package's `types`
+ * field (./dist-lib/index.d.ts) resolve. emptyOutDir wipes dist-lib on each
+ * build, so the copy must run as part of the build (writeBundle), not be
+ * committed into dist-lib.
+ */
+function emitDeclarations() {
+  return {
+    name: 'vulos-mail-ui:emit-dts',
+    writeBundle() {
+      for (const name of ['index.d.ts', 'api.d.ts']) {
+        copyFileSync(resolve(dir, 'types', name), resolve(dir, 'dist-lib', name))
+      }
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), emitDeclarations()],
   build: {
     lib: {
       entry: {

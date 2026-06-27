@@ -18,12 +18,14 @@
   "types": "./dist-lib/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist-lib/index.d.ts",
       "source": "./src/lib/index.js",
       "import": "./dist-lib/index.js",
       "require": "./dist-lib/index.cjs",
       "default": "./dist-lib/index.js"
     },
     "./api": {
+      "types": "./dist-lib/api.d.ts",
       "source": "./src/api.js",
       "import": "./dist-lib/api.js",
       "require": "./dist-lib/api.cjs",
