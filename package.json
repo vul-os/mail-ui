@@ -1,7 +1,7 @@
 {
   "name": "@vulos/mail-ui",
   "private": false,
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Shared React webmail UI for Vulos — talks to the lilmail /v1 JSON API.",
   "scripts": {
