@@ -186,14 +186,14 @@ describe('createMailClient — snooze & labels', () => {
     expect(JSON.parse(init.body)).toEqual({ until: '2026-07-02T08:00:00.000Z' })
   })
 
-  it('applyLabel POSTs {label, add} to the labels route', async () => {
+  it('applyLabel PATCHes {flags:[label], add} to the flags route', async () => {
     const fetch = vi.fn(() => Promise.resolve({ ok: true, status: 204 }))
     const c = createMailClient({ baseUrl: '/v1', fetch })
     await c.applyLabel('42', 'Work', true, { folder: 'INBOX' })
     const [url, init] = fetch.mock.calls[0]
-    expect(url).toBe('/v1/messages/42/labels?folder=INBOX')
-    expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body)).toEqual({ label: 'Work', add: true })
+    expect(url).toBe('/v1/messages/42/flags?folder=INBOX')
+    expect(init.method).toBe('PATCH')
+    expect(JSON.parse(init.body)).toEqual({ flags: ['Work'], add: true })
   })
 })
 

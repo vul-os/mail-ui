@@ -143,16 +143,16 @@ export function createMailClient(opts = {}) {
     },
 
     /**
-     * POST /v1/messages/:uid/labels?folder= body {label, add} → 204
-     * Apply (add=true) or remove (add=false) a user label/keyword. Optional
-     * endpoint (lilmail wave3): rejects with ApiError(404)/(405) on older servers
-     * so callers degrade gracefully.
+     * PATCH /v1/messages/:uid/flags?folder= body {flags:[label], add} → 204
+     * Apply (add=true) or remove (add=false) a user label/keyword — labels are
+     * IMAP keyword flags, so this rides the batch-flags endpoint (lilmail wave3).
+     * Older servers without keyword support reject so callers degrade gracefully.
      */
     applyLabel(uid, label, add, { folder = DEFAULT_FOLDER } = {}) {
-      return request(`/messages/${encodeURIComponent(uid)}/labels`, {
-        method: 'POST',
+      return request(`/messages/${encodeURIComponent(uid)}/flags`, {
+        method: 'PATCH',
         query: { folder },
-        body: { label, add: !!add },
+        body: { flags: [label], add: !!add },
       })
     },
 

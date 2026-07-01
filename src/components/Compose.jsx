@@ -51,7 +51,8 @@ export default function Compose({
     // Only reference fully-uploaded attachments (those with a server id).
     const ready = attachments
       .filter((a) => a.status === 'done' && a.id != null)
-      .map((a) => ({ id: a.id, filename: a.name, size: a.size, contentType: a.contentType }))
+      // lilmail /v1 send reads the staging `token`; keep `id` for other consumers.
+      .map((a) => ({ token: a.id, id: a.id, filename: a.name, size: a.size, contentType: a.contentType }))
     return {
       to, cc, bcc, subject,
       html,
