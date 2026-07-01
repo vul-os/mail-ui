@@ -9,6 +9,7 @@ import Calendar from './Calendar.jsx'
 import CalendarPanel from './CalendarPanel.jsx'
 import Contacts from './Contacts.jsx'
 import ShortcutsHelp from './ShortcutsHelp.jsx'
+import CommandPalette from './CommandPalette.jsx'
 import Icon from './Icon.jsx'
 import { groupThreads } from './threading.js'
 import { useSettings } from './useSettings.js'
@@ -55,6 +56,7 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
   const [composes, setComposes] = useState([])
   const [panel, setPanel] = useState('none')        // none | calendar | contacts | settings
   const [helpOpen, setHelpOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [mobilePane, setMobilePane] = useState('list')  // list | read
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [railCollapsed, setRailCollapsed] = useState(false)
@@ -87,6 +89,16 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
   const undoTimers = useRef(new Map())
   useEffect(() => () => { for (const t of undoTimers.current.values()) clearTimeout(t) }, [])
 
+  // The most recent still-reversible action, so pressing `z` undoes it (the
+  // "oops, put that back" reflex). Cleared when its undo window lapses.
+  const lastUndo = useRef(null)
+
+  // After archiving/deleting the open conversation we advance to the next one
+  // (Superhuman-style triage flow). The list is derived state, so we stash the
+  // target id here and open it once the recomputed list lands. '__none__' means
+  // "nothing left — fall back to the list".
+  const pendingOpen = useRef(null)
+
   const handleError = useCallback((e) => {
     if (e?.status === 401) onAuthError?.(e)
     return e?.message || 'Something went wrong'
@@ -105,19 +117,26 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
     const id = ++composeSeq
     const timer = setTimeout(() => {
       undoTimers.current.delete(id)
+      if (lastUndo.current?.id === id) lastUndo.current = null
       setToasts((t) => t.filter((x) => x.id !== id))
       commit()
     }, UNDO_MS)
     undoTimers.current.set(id, timer)
-    setToasts((t) => [...t, {
-      id, text, kind: 'info',
-      undo: () => {
-        clearTimeout(timer)
-        undoTimers.current.delete(id)
-        setToasts((tt) => tt.filter((x) => x.id !== id))
-        undo()
-      },
-    }])
+    const doUndo = () => {
+      clearTimeout(timer)
+      undoTimers.current.delete(id)
+      if (lastUndo.current?.id === id) lastUndo.current = null
+      setToasts((tt) => tt.filter((x) => x.id !== id))
+      undo()
+    }
+    lastUndo.current = { id, undo: doUndo }
+    setToasts((t) => [...t, { id, text, kind: 'info', undo: doUndo }])
+  }, [])
+
+  // Reverse the most recent undoable action (bound to `z`).
+  const undoLast = useCallback(() => {
+    const u = lastUndo.current
+    if (u) { lastUndo.current = null; u.undo() }
   }, [])
 
   // ── Bootstrap ───────────────────────────────────────────────────────────
@@ -193,6 +212,25 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
   // Keep focusIdx in range.
   useEffect(() => { if (focusIdx >= threads.length) setFocusIdx(threads.length - 1) }, [threads.length, focusIdx])
 
+  // Home the keyboard cursor onto the first row as soon as a list lands, so j/k
+  // and Enter work immediately without an initial mouse click.
+  useEffect(() => {
+    if (!listLoading && focusIdx < 0 && threads.length) setFocusIdx(0)
+  }, [listLoading, threads.length, focusIdx])
+
+  // Auto-advance: once the list recomputes after a triage action, open the
+  // conversation we queued (or drop back to the list when none is left).
+  useEffect(() => {
+    const pid = pendingOpen.current
+    if (!pid) return
+    pendingOpen.current = null
+    if (pid !== '__none__') {
+      const t = threads.find((x) => x.id === pid)
+      if (t) { openThreadFn(t); return }
+    }
+    setOpenThread(null); setMobilePane('list')
+  }, [threads])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Message state patching (optimistic) ───────────────────────────────────
   const patchFlags = useCallback((ids, flag, add) => {
     const idSet = new Set(ids)
@@ -247,6 +285,19 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
     return threads.filter((t) => selection.has(t.id))
   }, [threads, selection])
 
+  // When a triage action removes the open conversation, decide what happens to
+  // the reading pane: advance to the next conversation (default, Superhuman-like)
+  // or fall back to the list. Only fires when the open thread is actually removed.
+  const advanceAfter = useCallback((targets) => {
+    if (!openThread || !targets.some((t) => t.id === openThread.id)) return
+    if (settings.autoAdvance === false) { setOpenThread(null); setMobilePane('list'); return }
+    const removed = new Set(targets.map((t) => t.id))
+    const i = threads.findIndex((t) => t.id === openThread.id)
+    const next = threads.slice(i + 1).find((t) => !removed.has(t.id))
+      || [...threads.slice(0, Math.max(0, i))].reverse().find((t) => !removed.has(t.id))
+    pendingOpen.current = next ? next.id : '__none__'
+  }, [openThread, threads, settings.autoAdvance])
+
   // ── Star ───────────────────────────────────────────────────────────────────
   const toggleStar = useCallback((thread, next) => {
     const targets = targetsOf(thread)
@@ -278,15 +329,15 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
     if (!targets.length) return
     const ids = targets.flatMap((t) => t.messages.map((m) => m.id))
     const src = starredFolderSrc(folder)
+    advanceAfter(targets)
     removeIds(ids)
-    if (openThread && targets.some((t) => t.id === openThread.id)) { setOpenThread(null); setMobilePane('list') }
     setSelection(new Set())
     undoable(
       `Deleted ${targets.length > 1 ? targets.length + ' conversations' : 'conversation'}`,
       () => { for (const id of ids) client.deleteMessage(id, { folder: src }).catch((e) => { handleError(e); loadList() }) },
       () => loadList(),
     )
-  }, [targetsOf, removeIds, openThread, client, folder, handleError, loadList, undoable])
+  }, [targetsOf, removeIds, advanceAfter, client, folder, handleError, loadList, undoable])
 
   // ── Archive (move to Archive) ──────────────────────────────────────────────
   const archiveThreads = useCallback((thread) => {
@@ -295,8 +346,8 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
     if (!targets.length) return
     const ids = targets.flatMap((t) => t.messages.map((m) => m.id))
     const src = starredFolderSrc(folder)
+    advanceAfter(targets)
     removeIds(ids)
-    if (openThread && targets.some((t) => t.id === openThread.id)) { setOpenThread(null); setMobilePane('list') }
     setSelection(new Set())
     undoable(
       `Archived ${targets.length > 1 ? targets.length + ' conversations' : 'conversation'}`,
@@ -313,7 +364,7 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
       },
       () => loadList(),
     )
-  }, [canArchive, targetsOf, removeIds, openThread, client, archiveFolder, folder, handleError, loadList, toast, undoable])
+  }, [canArchive, targetsOf, removeIds, advanceAfter, client, archiveFolder, folder, handleError, loadList, toast, undoable])
 
   // ── Attachment download ────────────────────────────────────────────────────
   // Optional /v1 route; on 404/405 we disable the chips (capability probe),
@@ -369,10 +420,23 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
   // ── Folder / search nav ────────────────────────────────────────────────────
   const selectFolder = useCallback((f) => {
     setFolder(f); setQuery(''); setOpenThread(null); setSelection(new Set())
-    setMobilePane('list'); setDrawerOpen(false); setPanel('none')
+    setMobilePane('list'); setDrawerOpen(false); setPanel('none'); setFocusIdx(-1)
   }, [])
-  const runSearch = useCallback((q) => { setQuery(q); setOpenThread(null); setMobilePane('list') }, [])
-  const clearSearch = useCallback(() => { setQuery(''); setOpenThread(null) }, [])
+  const runSearch = useCallback((q) => { setQuery(q); setOpenThread(null); setMobilePane('list'); setFocusIdx(-1) }, [])
+  const clearSearch = useCallback(() => { setQuery(''); setOpenThread(null); setFocusIdx(-1) }, [])
+
+  // Resolve a `g …` chord destination (or palette "Go to" item) to a real
+  // mailbox path; returns null when the account has no such folder.
+  const specialPath = useCallback((kind) => {
+    if (kind === 'inbox') return 'INBOX'
+    if (kind === 'starred') return STARRED_FOLDER
+    const f = folders.find((x) => classifyFolder(x) === kind)
+    return f ? (f.path ?? f.name) : null
+  }, [folders])
+  const gotoFolder = useCallback((dest) => {
+    const path = specialPath(dest)
+    if (path) selectFolder(path)
+  }, [specialPath, selectFolder])
 
   const togglePanel = useCallback((name) => setPanel((p) => (p === name ? 'none' : name)), [])
 
@@ -404,17 +468,72 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
     compose: () => openCompose(),
     search: () => searchRef.current?.focus(),
     help: () => setHelpOpen(true),
+    palette: () => setPaletteOpen(true),
+    undo: undoLast,
+    goto: gotoFolder,
     escape: () => {
-      if (helpOpen) setHelpOpen(false)
+      if (paletteOpen) setPaletteOpen(false)
+      else if (helpOpen) setHelpOpen(false)
       else if (composes.length) closeCompose(composes[composes.length - 1].id)
       else if (panel !== 'none') setPanel('none')
       else if (openThread) { setOpenThread(null); setMobilePane('list') }
     },
-  }), [threads, focusIdx, openThread, fullById, moveFocus, openThreadFn, archiveThreads, deleteThreads, toggleStar, toggleSelect, replyTo, openCompose, helpOpen, panel, composes, closeCompose])
+  }), [threads, focusIdx, openThread, fullById, moveFocus, openThreadFn, archiveThreads, deleteThreads, toggleStar, toggleSelect, replyTo, openCompose, undoLast, gotoFolder, helpOpen, paletteOpen, panel, composes, closeCompose])
 
   useKeyboard(kbHandlers, settings.shortcuts)
 
   const contactSearch = useCallback((q) => client.listContacts({ q, limit: 6 }).catch(() => []), [client])
+
+  // ── Command palette (⌘K) ────────────────────────────────────────────────────
+  // A flat, fuzzy-searchable dispatch table over the handlers above. Every entry
+  // is a real, wired action — nothing here is a placeholder.
+  const commands = useMemo(() => {
+    const cmds = []
+    const cur = openThread || threads[focusIdx] || null
+
+    // Go to — mailboxes that actually exist on this account, then user labels.
+    const go = (id, title, icon, path) => { if (path) cmds.push({ id: 'go-' + id, section: 'Go to', title, icon, keywords: 'mailbox folder', run: () => selectFolder(path) }) }
+    go('inbox', 'Inbox', 'inbox', 'INBOX')
+    go('starred', 'Starred', 'star', STARRED_FOLDER)
+    go('sent', 'Sent', 'send', specialPath('sent'))
+    go('drafts', 'Drafts', 'draft', specialPath('drafts'))
+    go('archive', 'Archive', 'archive', archiveFolder)
+    go('junk', 'Spam', 'shield', specialPath('junk'))
+    go('trash', 'Trash', 'trash', trashFolder)
+    for (const l of labels) {
+      cmds.push({ id: 'label-' + l.path, section: 'Go to', title: l.label, dot: labelHue(l.path), keywords: 'label ' + l.path, run: () => selectFolder(l.path) })
+    }
+
+    // This conversation — only when one is focused/open.
+    if (cur) {
+      const full = fullById[cur.latest.id] || cur.latest
+      if (canArchive) cmds.push({ id: 'c-archive', section: 'This conversation', title: 'Archive', icon: 'archive', keys: ['e'], run: () => archiveThreads(cur) })
+      cmds.push({ id: 'c-delete', section: 'This conversation', title: 'Delete', icon: 'trash', keys: ['#'], run: () => deleteThreads(cur) })
+      cmds.push({ id: 'c-star', section: 'This conversation', title: cur.starred ? 'Unstar' : 'Star', icon: 'star', keys: ['s'], run: () => toggleStar(cur, !cur.starred) })
+      cmds.push({ id: 'c-read', section: 'This conversation', title: cur.unread ? 'Mark as read' : 'Mark as unread', icon: cur.unread ? 'mailopen' : 'mail', run: () => toggleRead(cur, cur.unread) })
+      cmds.push({ id: 'c-reply', section: 'This conversation', title: 'Reply', icon: 'reply', keys: ['r'], run: () => replyTo(full, 'reply') })
+      cmds.push({ id: 'c-replyall', section: 'This conversation', title: 'Reply all', icon: 'replyall', keys: ['a'], run: () => replyTo(full, 'replyAll') })
+      cmds.push({ id: 'c-forward', section: 'This conversation', title: 'Forward', icon: 'forward', keys: ['f'], run: () => replyTo(full, 'forward') })
+    }
+
+    // Actions.
+    cmds.push({ id: 'a-compose', section: 'Actions', title: 'Compose new message', icon: 'pencil', keys: ['c'], keywords: 'new write email', run: () => openCompose() })
+    cmds.push({ id: 'a-search', section: 'Actions', title: 'Search mail', icon: 'search', keys: ['/'], run: () => setTimeout(() => searchRef.current?.focus(), 0) })
+    cmds.push({ id: 'a-refresh', section: 'Actions', title: 'Refresh', icon: 'refresh', run: () => loadList() })
+
+    // View — instantly-applied appearance preferences.
+    cmds.push({ id: 'v-theme', section: 'View', title: resolvedTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', icon: resolvedTheme === 'dark' ? 'sun' : 'moon', keywords: 'appearance dark light mode', run: () => setSettings({ theme: resolvedTheme === 'dark' ? 'light' : 'dark' }) })
+    cmds.push({ id: 'v-density', section: 'View', title: settings.density === 'compact' ? 'Comfortable density' : 'Compact density', icon: settings.density === 'compact' ? 'list' : 'menu', keywords: 'spacing rows', run: () => setSettings({ density: settings.density === 'compact' ? 'comfortable' : 'compact' }) })
+    cmds.push({ id: 'v-threaded', section: 'View', title: settings.threaded ? 'Turn off conversation view' : 'Turn on conversation view', icon: 'layers', keywords: 'thread group', run: () => setSettings((s) => ({ threaded: !s.threaded })) })
+
+    // Panels.
+    cmds.push({ id: 'p-settings', section: 'Panels', title: 'Settings', icon: 'settings', run: () => setPanel('settings') })
+    cmds.push({ id: 'p-contacts', section: 'Panels', title: 'Contacts', icon: 'users', run: () => setPanel('contacts') })
+    if (calendarAvailable) cmds.push({ id: 'p-calendar', section: 'Panels', title: 'Calendar', icon: 'calendar', run: () => setPanel('calendar') })
+    cmds.push({ id: 'p-help', section: 'Panels', title: 'Keyboard shortcuts', icon: 'keyboard', keys: ['?'], run: () => setHelpOpen(true) })
+
+    return cmds
+  }, [openThread, threads, focusIdx, fullById, labels, canArchive, archiveFolder, trashFolder, specialPath, calendarAvailable, resolvedTheme, settings.density, settings.threaded, selectFolder, archiveThreads, deleteThreads, toggleStar, toggleRead, replyTo, openCompose, loadList, setSettings])
 
   return (
     <div
@@ -550,6 +669,8 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
         ))}
       </div>
 
+      {paletteOpen && <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />}
+
       {helpOpen && <ShortcutsHelp onClose={() => setHelpOpen(false)} />}
 
       <div className="vm-toasts" aria-live="polite">
@@ -567,4 +688,11 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
 /** Starred is a virtual view over INBOX; map it back to a real source folder. */
 function starredFolderSrc(folder) {
   return folder === STARRED_FOLDER ? 'INBOX' : folder
+}
+
+/** Stable hue 0..359 from a label path, matching FolderList's colour dots. */
+function labelHue(seed = '') {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360
+  return h
 }

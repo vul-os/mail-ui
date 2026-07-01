@@ -508,16 +508,53 @@
 
 /* ── Help overlay ─────────────────────────────────────────────────────────── */
 .vm-overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: var(--sp-4); background: color-mix(in srgb, var(--bg-base) 72%, transparent); backdrop-filter: blur(6px); font-family: var(--font-mono); color: var(--text-primary); }
-.vm-help { width: min(640px, 96vw); background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); }
+.vm-help { width: min(720px, 96vw); background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); }
 .vm-help-head { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-4) var(--sp-5); border-bottom: 1px solid var(--border-subtle); }
 .vm-help-head h2 { display: flex; align-items: center; gap: var(--sp-2); margin: 0; font-size: 16px; font-weight: 600; }
-.vm-help-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-5); padding: var(--sp-5); }
+.vm-help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--sp-5); padding: var(--sp-5); }
 .vm-help-col h3 { margin: 0 0 var(--sp-3); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); }
 .vm-help-col dl { margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
 .vm-help-row { display: flex; align-items: center; gap: var(--sp-3); }
 .vm-help-row dt { flex: none; }
 .vm-help-row dd { margin: 0; font-size: 12.5px; color: var(--text-tertiary); }
 .vm-help kbd { display: inline-block; min-width: 22px; padding: 2px 7px; text-align: center; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary); }
+
+/* ── Command palette (⌘K) ─────────────────────────────────────────────────── */
+.vm-cmdk-overlay { align-items: flex-start; padding-top: min(14vh, 120px); font-family: var(--font-sans); }
+.vm-cmdk {
+  width: min(624px, 94vw); max-height: 72vh; display: flex; flex-direction: column;
+  background: var(--bg-surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); overflow: hidden;
+  animation: vm-cmdk-in .14s var(--ease);
+}
+@keyframes vm-cmdk-in { from { opacity: 0; transform: translateY(-6px) scale(.99); } }
+
+.vm-cmdk-search { display: flex; align-items: center; gap: var(--sp-3); padding: 0 var(--sp-4); height: 52px; border-bottom: 1px solid var(--border-subtle); flex: none; }
+.vm-cmdk-search > .vm-icon { width: 18px; height: 18px; color: var(--text-faint); flex: none; }
+.vm-cmdk-search input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--text-primary); font-size: 15px; font-family: inherit; }
+.vm-cmdk-search input::placeholder { color: var(--text-faint); }
+.vm-cmdk-hint { flex: none; padding: 2px 7px; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 10.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .04em; }
+
+.vm-cmdk-list { list-style: none; margin: 0; padding: var(--sp-2); overflow-y: auto; }
+.vm-cmdk-list ul { list-style: none; margin: 0; padding: 0; }
+.vm-cmdk-group + .vm-cmdk-group { margin-top: 2px; }
+.vm-cmdk-section { padding: 8px 10px 4px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--text-faint); }
+.vm-cmdk-item {
+  display: flex; align-items: center; gap: var(--sp-3); padding: 8px 10px;
+  border-radius: var(--radius-sm); cursor: pointer; color: var(--text-secondary);
+  position: relative; scroll-margin: 8px; user-select: none;
+}
+.vm-cmdk-item.vm-on { background: var(--bg-hover); color: var(--text-primary); }
+.vm-cmdk-item.vm-on::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2.5px; border-radius: var(--radius-pill); background: var(--accent); }
+.vm-cmdk-ico { display: grid; place-items: center; width: 20px; flex: none; color: var(--text-faint); }
+.vm-cmdk-item.vm-on .vm-cmdk-ico { color: var(--accent); }
+.vm-cmdk-ico .vm-icon { width: 16px; height: 16px; }
+.vm-cmdk-ico .vm-label-dot { width: 9px; height: 9px; }
+.vm-cmdk-title { flex: 1; min-width: 0; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vm-cmdk-meta { flex: none; font-size: 12px; color: var(--text-faint); }
+.vm-cmdk-keys { flex: none; display: flex; gap: 4px; }
+.vm-cmdk-keys kbd { min-width: 18px; padding: 1px 6px; text-align: center; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); }
+.vm-cmdk-empty { padding: 28px var(--sp-4); text-align: center; color: var(--text-faint); font-size: 13px; }
 
 /* ── Toasts ───────────────────────────────────────────────────────────────── */
 .vm-toasts { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 110; display: flex; flex-direction: column; gap: var(--sp-2); align-items: center; pointer-events: none; }

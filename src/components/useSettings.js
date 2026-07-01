@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS = {
   inboxType: 'default',       // 'default' | 'unread' | 'starred' (client-side sort)
   preview: true,              // show the snippet preview line in the list
   shortcuts: true,
+  autoAdvance: true,          // after archive/delete, open the next conversation
   threaded: true,
   notifications: false,       // desktop notifications (browser Notification API)
   calendarPanel: true,        // show the right-hand calendar side panel (desktop)

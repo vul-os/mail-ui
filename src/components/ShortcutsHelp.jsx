@@ -9,6 +9,17 @@ const GROUPS = [
       ['Enter / o', 'Open conversation'],
       ['u', 'Back to list'],
       ['/', 'Search'],
+      ['⌘K', 'Command palette'],
+    ],
+  },
+  {
+    title: 'Go to',
+    items: [
+      ['g i', 'Inbox'],
+      ['g s', 'Starred'],
+      ['g t', 'Sent'],
+      ['g d', 'Drafts'],
+      ['g a', 'Archive'],
     ],
   },
   {
@@ -19,6 +30,7 @@ const GROUPS = [
       ['s', 'Star'],
       ['x', 'Select'],
       ['c', 'Compose'],
+      ['z', 'Undo last action'],
     ],
   },
   {

@@ -120,6 +120,14 @@ export default function Settings({ settings, onChange, onClose, extra, labels = 
             </span>
             <Toggle id="vm-set-preview" checked={settings.preview !== false} onChange={(v) => set({ preview: v })} />
           </div>
+
+          <div className="vm-set-row vm-set-inline">
+            <span className="vm-set-line">
+              <label className="vm-set-label" htmlFor="vm-set-advance">Auto-advance</label>
+              <span className="vm-set-desc">After archiving or deleting, jump straight to the next conversation.</span>
+            </span>
+            <Toggle id="vm-set-advance" checked={settings.autoAdvance !== false} onChange={(v) => set({ autoAdvance: v })} />
+          </div>
         </Section>
 
         <Section title="Appearance" icon="contrast">

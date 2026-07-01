@@ -21,6 +21,14 @@ export default function MessageList({
   const lastIdx = useRef(null)
   useEffect(() => { setQ(query) }, [query])
 
+  // Keep the keyboard-focused row visible as j/k walk past the fold. `nearest`
+  // avoids yanking the whole list when the row is already on screen.
+  useEffect(() => {
+    if (focusId == null || !innerRef.current) return
+    const row = innerRef.current.querySelector(`[data-thread-id="${cssEscape(focusId)}"]`)
+    if (typeof row?.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' })
+  }, [focusId])
+
   const selCount = selection ? selection.size : 0
   const allSelected = threads.length > 0 && selCount === threads.length
 
@@ -150,6 +158,7 @@ export default function MessageList({
             return (
               <li key={t.id}>
                 <div
+                  data-thread-id={t.id}
                   className={
                     'vm-row' +
                     (t.id === selectedId ? ' vm-active' : '') +
@@ -225,6 +234,13 @@ export default function MessageList({
       )}
     </section>
   )
+}
+
+/** Escape an attribute value for use in a querySelector, tolerating exotic ids. */
+function cssEscape(v) {
+  const s = String(v)
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(s)
+  return s.replace(/["\\]/g, '\\$&')
 }
 
 function emptyText(folder) {

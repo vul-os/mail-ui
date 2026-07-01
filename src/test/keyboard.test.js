@@ -28,9 +28,14 @@ describe('keyToAction', () => {
     expect(keyToAction(ev('a', { altKey: true }))).toBeNull()
   })
 
+  it('maps the triage + navigation extras (undo, go-to chord)', () => {
+    expect(keyToAction(ev('z'))).toBe('undo')
+    expect(keyToAction(ev('g'))).toBe('goto')
+  })
+
   it('returns null for unmapped keys', () => {
-    expect(keyToAction(ev('z'))).toBeNull()
     expect(keyToAction(ev('1'))).toBeNull()
+    expect(keyToAction(ev('q'))).toBeNull()
   })
 })
 
