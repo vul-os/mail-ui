@@ -64,4 +64,37 @@ describe('useKeyboard', () => {
     fireKey(input, 'Escape')
     expect(escape).toHaveBeenCalledTimes(1)
   })
+
+  it('dispatches a `g i` chord to goto("inbox")', () => {
+    const goto = vi.fn()
+    renderHook(() => useKeyboard({ goto }, true))
+    fireKey(document.body, 'g')
+    expect(goto).not.toHaveBeenCalled() // armed, awaiting the destination key
+    fireKey(document.body, 'i')
+    expect(goto).toHaveBeenCalledWith('inbox')
+  })
+
+  it('does not fire goto for an unknown second chord key', () => {
+    const goto = vi.fn()
+    renderHook(() => useKeyboard({ goto }, true))
+    fireKey(document.body, 'g')
+    fireKey(document.body, 'q')
+    expect(goto).not.toHaveBeenCalled()
+  })
+
+  it('opens the palette on ⌘K / Ctrl-K, even while typing', () => {
+    const palette = vi.fn()
+    renderHook(() => useKeyboard({ palette }, true))
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true }))
+    expect(palette).toHaveBeenCalledTimes(1)
+  })
+
+  it('maps `z` to undo', () => {
+    const undo = vi.fn()
+    renderHook(() => useKeyboard({ undo }, true))
+    fireKey(document.body, 'z')
+    expect(undo).toHaveBeenCalledTimes(1)
+  })
 })

@@ -74,7 +74,7 @@ export default function CommandPalette({ commands = [], onClose }) {
   useEffect(() => { setActive(0) }, [q])
   useEffect(() => {
     const el = listRef.current?.querySelector('[data-active="1"]')
-    el?.scrollIntoView({ block: 'nearest' })
+    if (typeof el?.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
   }, [active, results])
 
   const run = (cmd) => { if (!cmd) return; onClose?.(); cmd.run?.() }
