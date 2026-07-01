@@ -568,6 +568,47 @@
 /* ── Mobile drawer scrim ──────────────────────────────────────────────────── */
 .vm-scrim { display: none; position: fixed; inset: 0; z-index: 40; background: color-mix(in srgb, var(--bg-base) 60%, transparent); }
 
+/* ── Infinite-scroll load-more footer ─────────────────────────────────────── */
+.vm-loadmore { display: flex; align-items: center; justify-content: center; padding: var(--sp-3); min-height: 52px; border-bottom: 1px solid var(--border-subtle); }
+.vm-loadmore-status { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: 12px; color: var(--text-faint); }
+.vm-spinner { width: 15px; height: 15px; flex: none; border-radius: 50%; border: 2px solid var(--border-emphasis); border-top-color: var(--accent); animation: vm-spin .7s linear infinite; }
+@keyframes vm-spin { to { transform: rotate(360deg); } }
+
+/* ── Dropdown menu (snooze / label popover) ───────────────────────────────── */
+.vm-menu-wrap { position: relative; display: inline-flex; }
+.vm-menu { position: absolute; top: calc(100% + 6px); z-index: 20; min-width: 210px; padding: var(--sp-1); background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-pop); animation: vm-cmdk-in .12s var(--ease); }
+.vm-menu-right { right: 0; }
+.vm-menu-left { left: 0; }
+.vm-menu-header, .vm-menu-title { display: block; padding: 6px 10px 4px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-faint); }
+.vm-menu-item { display: flex; align-items: center; gap: var(--sp-2); width: 100%; text-align: left; padding: 8px 10px; border-radius: var(--radius-sm); color: var(--text-secondary); transition: background var(--dur), color var(--dur); }
+.vm-menu-item.vm-on { background: var(--bg-hover); color: var(--text-primary); }
+.vm-menu-item.vm-danger.vm-on { color: var(--danger); background: var(--danger-soft); }
+.vm-menu-item-ico { display: grid; place-items: center; width: 16px; height: 16px; flex: none; color: var(--text-faint); }
+.vm-menu-item.vm-on .vm-menu-item-ico { color: var(--accent); }
+.vm-menu-item-ico.vm-icon { width: 16px; height: 16px; }
+.vm-menu-item-label { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vm-menu-item-sub { flex: none; font-size: 11px; color: var(--text-faint); }
+.vm-menu-item.vm-on .vm-menu-item-sub { color: var(--text-muted); }
+.vm-menu-item-check { width: 15px; height: 15px; color: var(--accent); flex: none; }
+.vm-menu-empty { padding: 10px; font-size: 12px; color: var(--text-faint); text-align: center; }
+
+/* ── Compose attachments (staged uploads) + drop overlay ──────────────────── */
+.vm-compose { position: relative; }
+.vm-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.vm-attachments { list-style: none; margin: 0; padding: var(--sp-2) var(--sp-3); display: flex; flex-wrap: wrap; gap: var(--sp-2); border-top: 1px solid var(--border-subtle); max-height: 112px; overflow-y: auto; }
+.vm-attachment { display: inline-flex; align-items: center; gap: 7px; padding: 6px 6px 6px 10px; max-width: 230px; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 12px; color: var(--text-tertiary); }
+.vm-attachment-ico { width: 14px; height: 14px; color: var(--text-faint); flex: none; }
+.vm-attachment-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vm-attachment-size { flex: none; color: var(--text-faint); }
+.vm-att-uploading { opacity: .8; }
+.vm-att-uploading .vm-attachment-size { color: var(--accent); }
+.vm-att-error { border-color: var(--danger); color: var(--danger); }
+.vm-attachment-x { display: grid; place-items: center; width: 20px; height: 20px; border-radius: var(--radius-sm); color: var(--text-faint); flex: none; }
+.vm-attachment-x:hover { color: var(--text-primary); background: var(--bg-hover); }
+.vm-attachment-x .vm-icon { width: 13px; height: 13px; }
+.vm-drop-overlay { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; gap: var(--sp-2); font-size: 14px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--bg-base) 76%, transparent); border: 2px dashed var(--accent); border-radius: inherit; pointer-events: none; }
+.vm-drop-overlay .vm-icon { width: 22px; height: 22px; }
+
 /* ════════════════════════════════════════════════════════════════════════
    Calendar
    ════════════════════════════════════════════════════════════════════════ */

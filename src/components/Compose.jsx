@@ -2,14 +2,18 @@ import { useEffect, useId, useRef, useState } from 'react'
 import Icon from './Icon.jsx'
 import { stripHtml } from './sanitize.js'
 
+let attachSeq = 0
+
 /**
  * <Compose/> — Gmail-style docked composer (bottom-right). Minimise / maximise
  * to full-screen, To/Cc/Bcc with contact autocomplete, a rich-text body
  * (contenteditable → HTML, plain-text fallback), debounced draft auto-save, and
- * a disabled attachments control (upload not yet exposed over /v1).
+ * drag-drop / picker attachments (staged via `onUploadAttachment`, degrading to
+ * a disabled control when the host has no upload endpoint).
  */
 export default function Compose({
   initial = {}, onSend, onClose, onSaveDraft, onContactSearch, signature = '',
+  onUploadAttachment,
 }) {
   const [to, setTo] = useState(initial.to ?? '')
   const [cc, setCc] = useState(initial.cc ?? '')
@@ -21,10 +25,15 @@ export default function Compose({
   const [sending, setSending] = useState(false)
   const [savedAt, setSavedAt] = useState('')
   const [err, setErr] = useState('')
+  // Staged attachments: { key, name, size, contentType, id?, status, error? }.
+  const [attachments, setAttachments] = useState([])
+  const [dragging, setDragging] = useState(false)
+  const canAttach = typeof onUploadAttachment === 'function'
 
   const bodyRef = useRef(null)
   const toRef = useRef(null)
   const dockRef = useRef(null)
+  const fileRef = useRef(null)
   const saveTimer = useRef(null)
   const dirty = useRef(false)
 
@@ -39,13 +48,70 @@ export default function Compose({
 
   function collectDraft() {
     const html = bodyRef.current?.innerHTML ?? ''
+    // Only reference fully-uploaded attachments (those with a server id).
+    const ready = attachments
+      .filter((a) => a.status === 'done' && a.id != null)
+      .map((a) => ({ id: a.id, filename: a.name, size: a.size, contentType: a.contentType }))
     return {
       to, cc, bcc, subject,
       html,
       text: stripHtml(html),
       inReplyTo: initial.inReplyTo,
       references: initial.references,
+      ...(ready.length ? { attachments: ready } : {}),
     }
+  }
+
+  // Stage files: show an optimistic "uploading" chip, then swap in the server id
+  // (or an error state) as each upload settles. Failed/removed chips never make
+  // it into the sent draft (collectDraft filters on status === 'done').
+  function addFiles(fileList) {
+    if (!canAttach) return
+    const files = Array.from(fileList || [])
+    if (!files.length) return
+    dirty.current = true
+    for (const file of files) {
+      const key = 'a' + (++attachSeq)
+      setAttachments((list) => [...list, {
+        key, name: file.name || 'file', size: file.size, contentType: file.type, status: 'uploading',
+      }])
+      Promise.resolve(onUploadAttachment(file))
+        .then((res) => {
+          setAttachments((list) => list.map((a) => a.key === key
+            ? { ...a, status: 'done', id: res?.id, name: res?.filename || a.name, size: res?.size ?? a.size, contentType: res?.contentType || a.contentType }
+            : a))
+          scheduleSave()
+        })
+        .catch(() => {
+          // On failure drop the chip (the app surfaces a toast, incl. the
+          // "upload unavailable" capability case).
+          setAttachments((list) => list.filter((a) => a.key !== key))
+        })
+    }
+  }
+  function removeAttachment(key) {
+    setAttachments((list) => list.filter((a) => a.key !== key))
+    dirty.current = true
+  }
+  function onFilePick(e) {
+    addFiles(e.target.files)
+    e.target.value = ''  // allow re-picking the same file
+  }
+  function onDrop(e) {
+    if (!canAttach) return
+    if (!e.dataTransfer?.files?.length) return
+    e.preventDefault()
+    setDragging(false)
+    addFiles(e.dataTransfer.files)
+  }
+  function onDragOver(e) {
+    if (!canAttach || !Array.from(e.dataTransfer?.types || []).includes('Files')) return
+    e.preventDefault()
+    setDragging(true)
+  }
+  function onDragLeave(e) {
+    // Only clear when leaving the dock entirely, not on child transitions.
+    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget)) setDragging(false)
   }
 
   // Debounced auto-save (POST /v1/drafts) whenever content changes.
@@ -70,6 +136,9 @@ export default function Compose({
     if (!onSend) return
     setErr('')
     if (!to.trim()) { setErr('Add at least one recipient'); return }
+    if (attachments.some((a) => a.status === 'uploading')) {
+      setErr('Waiting for attachments to finish uploading…'); return
+    }
     setSending(true)
     try {
       await onSend(collectDraft())
@@ -143,8 +212,23 @@ export default function Compose({
   }
 
   return (
-    <div ref={dockRef} className={'vm-compose-dock' + (maximised ? ' vm-max' : '')} role="dialog" aria-modal={maximised ? 'true' : undefined} aria-label="Compose message" onKeyDown={onDockKeyDown}>
+    <div
+      ref={dockRef}
+      className={'vm-compose-dock' + (maximised ? ' vm-max' : '') + (dragging ? ' vm-dragging' : '')}
+      role="dialog"
+      aria-modal={maximised ? 'true' : undefined}
+      aria-label="Compose message"
+      onKeyDown={onDockKeyDown}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <div className="vm-compose">
+        {dragging && (
+          <div className="vm-drop-overlay" aria-hidden="true">
+            <Icon name="attach" /> <span>Drop files to attach</span>
+          </div>
+        )}
         <header className="vm-compose-head">
           <span className="vm-compose-title">{subject || 'New message'}</span>
           <span className="vm-compose-bar-actions">
@@ -185,6 +269,22 @@ export default function Compose({
           />
         </div>
 
+        {attachments.length > 0 && (
+          <ul className="vm-attachments" aria-label="Attachments">
+            {attachments.map((a) => (
+              <li key={a.key} className={'vm-attachment vm-att-' + a.status}>
+                <Icon name="attach" className="vm-attachment-ico" />
+                <span className="vm-attachment-name" title={a.name}>{a.name}</span>
+                <span className="vm-attachment-size">
+                  {a.status === 'uploading' ? 'Uploading…' : fmtSize(a.size)}
+                </span>
+                <button type="button" className="vm-attachment-x" aria-label={`Remove ${a.name}`}
+                  onClick={() => removeAttachment(a.key)}><Icon name="close" /></button>
+              </li>
+            ))}
+          </ul>
+        )}
+
         {err && <div className="vm-error" role="alert">{err}</div>}
 
         <footer className="vm-compose-foot">
@@ -200,8 +300,24 @@ export default function Compose({
             <button type="button" className="vm-iconbtn vm-sm" aria-label="Insert link" title="Insert link" onMouseDown={(e) => e.preventDefault()} onClick={addLink}><Icon name="link" /></button>
           </div>
           <span className="vm-spacer" />
-          <button type="button" className="vm-iconbtn vm-sm vm-attach-btn" aria-label="Attach files (coming soon)"
-            title="Attachments are not yet available over /v1" disabled><Icon name="attach" /></button>
+          {canAttach ? (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                className="vm-file-input"
+                onChange={onFilePick}
+                tabIndex={-1}
+                aria-hidden="true"
+              />
+              <button type="button" className="vm-iconbtn vm-sm vm-attach-btn" aria-label="Attach files"
+                title="Attach files" onClick={() => fileRef.current?.click()}><Icon name="attach" /></button>
+            </>
+          ) : (
+            <button type="button" className="vm-iconbtn vm-sm vm-attach-btn" aria-label="Attach files (unavailable)"
+              title="Attachments are not available on this server" disabled><Icon name="attach" /></button>
+          )}
           {savedAt && <span className="vm-note">Saved {savedAt}</span>}
           <button type="button" className="vm-iconbtn vm-sm vm-danger" aria-label="Discard draft" title="Discard" onClick={discard}><Icon name="trash" /></button>
         </footer>
@@ -292,4 +408,11 @@ function RecipientField({ label, value, setValue, inputRef, onContactSearch, onC
 function escapeHtml(s = '') {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/\n/g, '<br>')
+}
+
+function fmtSize(bytes) {
+  if (!bytes && bytes !== 0) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB'
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB'
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Icon from './Icon.jsx'
+import Menu from './Menu.jsx'
 import { sanitizeEmailBody } from './sanitize.js'
 import { initials, avatarStyle } from './avatar.js'
 import { fullDate } from './format.js'
@@ -15,6 +16,8 @@ export default function MessageView({
   thread, fullById = {}, onNeedBody, loading, error,
   onToggleStar, onArchive, onDelete, onReply, onReplyAll, onForward, onBack,
   onDownloadAttachment, canArchive = true, attachmentsSupported = true,
+  onSnooze, snoozeItems = [], canSnooze = false,
+  onApplyLabel, labels = [], canLabel = false,
 }) {
   const messages = thread?.messages ?? []
   const latestId = messages.length ? messages[messages.length - 1].id : null
@@ -70,6 +73,24 @@ export default function MessageView({
           <button type="button" className="vm-iconbtn" aria-label="Archive" title="Archive" onClick={onArchive}><Icon name="archive" /></button>
         )}
         <button type="button" className="vm-iconbtn vm-danger" aria-label="Delete" title="Delete" onClick={onDelete}><Icon name="trash" /></button>
+        {canSnooze && snoozeItems.length > 0 && (
+          <Menu
+            triggerIcon="snooze"
+            triggerLabel="Snooze"
+            align="left"
+            header={<span className="vm-menu-title">Snooze until</span>}
+            items={snoozeItems.map((p) => ({ id: p.id, label: p.label, sub: p.sub, icon: 'clock', onSelect: () => onSnooze?.(p.date) }))}
+          />
+        )}
+        {canLabel && labels.length > 0 && (
+          <Menu
+            triggerIcon="tag"
+            triggerLabel="Label as"
+            align="left"
+            header={<span className="vm-menu-title">Label as</span>}
+            items={labels.map((l) => ({ id: l.path, label: l.label, dot: labelHue(l.path), onSelect: () => onApplyLabel?.(l.path, true) }))}
+          />
+        )}
         <button type="button" className={'vm-iconbtn' + (starred ? ' vm-on' : '')} aria-label={starred ? 'Unstar' : 'Star'}
           aria-pressed={starred} onClick={() => onToggleStar?.(!starred)}><Icon name="star" fill={starred ? 'currentColor' : 'none'} /></button>
         <span className="vm-spacer" />
@@ -236,6 +257,13 @@ function attachPartId(a, uid) {
   if (s.startsWith(prefix)) return s.slice(prefix.length)
   const slash = s.indexOf('/')
   return slash >= 0 ? s.slice(slash + 1) : s
+}
+
+/** Stable hue 0..359 from a label path (matches FolderList / MailApp dots). */
+function labelHue(seed = '') {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360
+  return h
 }
 
 function fmtSize(bytes) {

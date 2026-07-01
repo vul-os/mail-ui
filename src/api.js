@@ -84,6 +84,23 @@ export function createMailClient(opts = {}) {
       return data.messages ?? []
     },
 
+    /**
+     * GET /v1/messages?folder=&limit=&offset=|&cursor= → paginated page.
+     *
+     * The paged sibling of listMessages: powers the message list's infinite
+     * scroll. Passes whichever of `offset`/`cursor` the caller holds from the
+     * previous page (never both meaningfully). Returns a normalised
+     * `{ messages, total?, nextCursor, nextOffset, hasMore }` (see normalizePage)
+     * so the UI can keep loading regardless of whether the server paginates by
+     * opaque cursor, numeric offset, or not at all (graceful degrade: a server
+     * that ignores the params just reports hasMore off once a short/duplicate
+     * page arrives, which the caller de-dupes).
+     */
+    async listMessagesPage({ folder = DEFAULT_FOLDER, limit = 50, offset, cursor } = {}) {
+      const data = await request('/messages', { query: { folder, limit, offset, cursor } })
+      return normalizePage(data, { limit, offset })
+    },
+
     /** GET /v1/messages/:uid?folder= → Email */
     getMessage(uid, { folder = DEFAULT_FOLDER } = {}) {
       return request(`/messages/${encodeURIComponent(uid)}`, { query: { folder } })
@@ -95,12 +112,47 @@ export function createMailClient(opts = {}) {
       return data.messages ?? []
     },
 
+    /** GET /v1/search?folder=&q=&limit=&offset=|&cursor= → paginated page (see listMessagesPage). */
+    async searchPage(q, { folder = DEFAULT_FOLDER, limit = 100, offset, cursor } = {}) {
+      const data = await request('/search', { query: { folder, q, limit, offset, cursor } })
+      return normalizePage(data, { limit, offset })
+    },
+
     /** PATCH /v1/messages/:uid/flags?folder= body {flag, add} → 204 */
     setFlag(uid, flag, add, { folder = DEFAULT_FOLDER } = {}) {
       return request(`/messages/${encodeURIComponent(uid)}/flags`, {
         method: 'PATCH',
         query: { folder },
         body: { flag, add: !!add },
+      })
+    },
+
+    /**
+     * POST /v1/messages/:uid/snooze?folder= body {until} → 204
+     * Hide the message until `until` (Date | ISO), then re-deliver to the inbox.
+     * Optional endpoint (lilmail wave3): rejects with ApiError(404)/(405) on
+     * servers without it so the UI can hide the snooze affordance (capability
+     * probe, mirroring archive/attachments).
+     */
+    snooze(uid, until, { folder = DEFAULT_FOLDER } = {}) {
+      return request(`/messages/${encodeURIComponent(uid)}/snooze`, {
+        method: 'POST',
+        query: { folder },
+        body: { until: iso(until) },
+      })
+    },
+
+    /**
+     * POST /v1/messages/:uid/labels?folder= body {label, add} → 204
+     * Apply (add=true) or remove (add=false) a user label/keyword. Optional
+     * endpoint (lilmail wave3): rejects with ApiError(404)/(405) on older servers
+     * so callers degrade gracefully.
+     */
+    applyLabel(uid, label, add, { folder = DEFAULT_FOLDER } = {}) {
+      return request(`/messages/${encodeURIComponent(uid)}/labels`, {
+        method: 'POST',
+        query: { folder },
+        body: { label, add: !!add },
       })
     },
 
@@ -262,7 +314,73 @@ export function createMailClient(opts = {}) {
       saveBlob(blob, name)
       return blob
     },
+
+    /**
+     * POST /v1/attachments — stage an outgoing attachment (multipart/form-data,
+     * field `file`). Returns `{ id, filename, size, contentType }`; the `id` is
+     * then referenced in a draft's `attachments[]` when sending/saving.
+     *
+     * FormData sets its own multipart boundary, so this bypasses the JSON
+     * `request()` path. Optional endpoint (lilmail wave3 upload branch): rejects
+     * with ApiError(404)/(405) on servers without it so compose can disable the
+     * attach affordance (capability probe, mirroring downloadAttachment).
+     *
+     * @param {File|Blob} file
+     * @param {object} [opts]
+     * @param {string} [opts.fieldName='file']
+     * @param {AbortSignal} [opts.signal]
+     */
+    async uploadAttachment(file, { fieldName = 'file', signal } = {}) {
+      const form = new FormData()
+      form.append(fieldName, file, file?.name)
+      const res = await fetchImpl(buildUrl('/attachments'), {
+        method: 'POST', credentials: 'include', body: form, signal,
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        throw new ApiError(payload.error || res.statusText || 'upload failed', res.status)
+      }
+      const data = await res.json().catch(() => ({}))
+      const a = data?.attachment ?? data ?? {}
+      return {
+        id: a.id ?? a.ID ?? a.token ?? a.Token,
+        filename: a.filename ?? a.Filename ?? file?.name,
+        size: a.size ?? a.Size ?? file?.size,
+        contentType: a.contentType ?? a.ContentType ?? a.type ?? file?.type,
+      }
+    },
   }
+}
+
+/**
+ * Normalise a paginated list/search response into a stable page shape the UI
+ * can drive infinite scroll from, regardless of the server's paging style:
+ *
+ *   { messages, total?, nextCursor, nextOffset, hasMore }
+ *
+ * Precedence for "is there more?": an explicit `hasMore` boolean → a non-null
+ * `nextCursor` → a `total` compared against consumed count → a full page
+ * (length ≥ limit). An empty page always means done. When the server returns
+ * neither a cursor nor an offset, we synthesise the next offset from the count
+ * so offset paging still works; the caller de-dupes by id, so a server that
+ * ignores paging entirely simply stops after the first duplicate page.
+ */
+function normalizePage(data, { limit, offset } = {}) {
+  const messages = data?.messages ?? []
+  const consumed = (Number(offset) || 0) + messages.length
+  const total = typeof data?.total === 'number' ? data.total : undefined
+  const nextCursor = data?.nextCursor ?? data?.cursor ?? null
+  let nextOffset = data?.nextOffset ?? data?.offset
+  if (nextOffset == null && nextCursor == null) nextOffset = consumed
+
+  let hasMore
+  if (typeof data?.hasMore === 'boolean') hasMore = data.hasMore
+  else if (nextCursor != null) hasMore = true
+  else if (total != null) hasMore = consumed < total
+  else hasMore = limit != null && messages.length >= limit
+  if (messages.length === 0) hasMore = false
+
+  return { messages, total, nextCursor, nextOffset, hasMore }
 }
 
 /** Parse a filename from a Content-Disposition header (RFC 5987 aware). */

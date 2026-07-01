@@ -176,8 +176,34 @@ const personal = [
   },
 ]
 
+// Extra synthetic inbox history so the list has >1 page and infinite scroll is
+// demonstrable in the standalone demo (kept older than the curated top items).
+const fillerSenders = [
+  ['digest@hn.example', 'Hacker News Digest', 'Top stories: a new Raft implementation, and why your tests are slow'],
+  ['updates@figma.com', 'Figma', 'Comments on “Landing v3” from 2 collaborators'],
+  ['no-reply@calendar.app', 'Calendar', 'Reminder: Retro tomorrow at 15:00'],
+  ['support@fastmail.example', 'Support', 'Re: Ticket #4821 — IMAP folder sync'],
+  ['team@notion.so', 'Notion', 'Weekly workspace summary'],
+  ['builds@ci.example', 'CI', 'main is green — deploy #1284 succeeded'],
+  ['news@changelog.com', 'Changelog', 'The pitch for local-first software'],
+  ['hello@vercel.com', 'Vercel', 'Your project had a spike in traffic'],
+  ['no-reply@auth0.com', 'Auth0', 'A new device signed in to your tenant'],
+  ['digest@lobste.rs', 'Lobsters', 'This week: SQLite tips, and a CRDT primer'],
+]
+const filler = Array.from({ length: 46 }, (_, i) => {
+  const [from, fromName, subject] = fillerSenders[i % fillerSenders.length]
+  return {
+    id: 'f' + (100 + i),
+    from, fromName, to: 'me@vulos.org',
+    subject: `${subject} (#${i + 1})`,
+    preview: 'Older message kept to exercise pagination and the load-more affordance in the demo.',
+    html: `<p>Older message #${i + 1}. Kept to exercise pagination and the load-more affordance in the standalone demo.</p>`,
+    date: ago((7 + i) * D), flags: i % 4 === 0 ? [] : ['\\Seen'], messageId: `<filler-${i}@vulos.org>`,
+  }
+})
+
 const FOLDERS = () => ({
-  INBOX: inbox.map(clone),
+  INBOX: [...inbox, ...filler].map(clone),
   Sent: sent.map(clone),
   Drafts: drafts.map(clone),
   Archive: archive.map(clone),
@@ -246,6 +272,22 @@ export function createMockClient() {
     },
     quota: async () => ({ used: 6.4 * 1024 * 1024 * 1024, limit: 15 * 1024 * 1024 * 1024 }),
     listMessages: async ({ folder = 'INBOX' } = {}) => (store[folder] || []).map(clone),
+    // Offset-paginated page (mirrors createMailClient.listMessagesPage). Returns
+    // total + nextOffset so the UI can drive infinite scroll deterministically.
+    listMessagesPage: async ({ folder = 'INBOX', limit = 50, offset = 0 } = {}) => {
+      const all = store[folder] || []
+      const off = Number(offset) || 0
+      const slice = all.slice(off, off + limit).map(clone)
+      return { messages: slice, total: all.length, nextOffset: off + slice.length, hasMore: off + slice.length < all.length }
+    },
+    searchPage: async (q, { folder = 'INBOX', limit = 50, offset = 0 } = {}) => {
+      const t = (q || '').toLowerCase()
+      const pool = folder ? (store[folder] || []) : Object.values(store).flat()
+      const hits = pool.filter((m) => (m.subject + m.preview + m.from + (m.fromName || '')).toLowerCase().includes(t))
+      const off = Number(offset) || 0
+      const slice = hits.slice(off, off + limit).map(clone)
+      return { messages: slice, total: hits.length, nextOffset: off + slice.length, hasMore: off + slice.length < hits.length }
+    },
     getMessage: async (uid, { folder = 'INBOX' } = {}) => {
       for (const f of Object.keys(store)) { const m = find(f, uid); if (m) return clone(m) }
       return { ...(find(folder, uid) || {}) }
@@ -282,6 +324,19 @@ export function createMockClient() {
       }
       return blob
     },
+    // Stage an outgoing attachment (echoes a fake id). Small artificial delay so
+    // the demo shows the "Uploading…" chip state.
+    uploadAttachment: async (file) => {
+      await new Promise((r) => setTimeout(r, 500))
+      return { id: 'att-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), filename: file?.name || 'file', size: file?.size, contentType: file?.type }
+    },
+    snooze: async (uid, until, { folder = 'INBOX' } = {}) => {
+      const list = store[folder] || []
+      const i = list.findIndex((m) => m.id === uid)
+      if (i >= 0) list.splice(i, 1)   // demo: just hide it (would re-deliver at `until`)
+      return null
+    },
+    applyLabel: async () => null,
     sendMessage: async (draft) => { console.log('demo send', draft); return { sent: true } },
     saveDraft: async (draft) => { console.log('demo draft', draft); return { saved: true } },
     listEvents: async ({ start, end } = {}) => {

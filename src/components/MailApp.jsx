@@ -47,6 +47,8 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
   const [messages, setMessages] = useState([])
   const [listLoading, setListLoading] = useState(true)
   const [listError, setListError] = useState('')
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
 
   const [openThread, setOpenThread] = useState(null)
   const [fullById, setFullById] = useState({})
@@ -63,8 +65,20 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
   const [toasts, setToasts] = useState([])
   const [moveSupported, setMoveSupported] = useState(true)
   const [attachmentsSupported, setAttachmentsSupported] = useState(true)
+  const [uploadSupported, setUploadSupported] = useState(true)
+  const [snoozeSupported, setSnoozeSupported] = useState(true)
+  const [labelSupported, setLabelSupported] = useState(true)
 
   const searchRef = useRef(null)
+
+  // How many messages to pull per list page (initial load + each scroll fetch).
+  const PAGE_SIZE = 50
+  // Cursor/offset carried from the last page so the next fetch continues it.
+  const pageRef = useRef({ nextOffset: null, nextCursor: null })
+  // Mirror of `messages` for de-duping appended pages without re-creating the
+  // loadMore callback on every list mutation.
+  const messagesRef = useRef(messages)
+  useEffect(() => { messagesRef.current = messages }, [messages])
 
   // Apply theme to the app root.
   const rootRef = useRef(null)
@@ -171,30 +185,83 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
   }, [folders])
   const canArchive = moveSupported && Boolean(archiveFolder)
 
-  // ── List loading ─────────────────────────────────────────────────────────
+  // Snooze preset targets (Later today / Tomorrow / Weekend / Next week).
+  // Recomputed when the list reloads so anchors stay fresh across a long session.
+  const snoozeItems = useMemo(() => snoozePresets(), [listLoading])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── List loading (paginated) ───────────────────────────────────────────────
+  // Fetch one page. Prefers the paginated client methods; falls back to the
+  // flat listMessages/search on older clients (capability probe) so the app
+  // still works — it just won't infinite-scroll.
+  const fetchPage = useCallback(async ({ src, limit, offset, cursor }) => {
+    if (query) {
+      if (typeof client.searchPage === 'function') {
+        return client.searchPage(query, { folder: src, limit, offset, cursor })
+      }
+      const messages = await client.search(query, { folder: src, limit })
+      return { messages, hasMore: false, nextOffset: null, nextCursor: null }
+    }
+    if (typeof client.listMessagesPage === 'function') {
+      return client.listMessagesPage({ folder: src, limit, offset, cursor })
+    }
+    const messages = await client.listMessages({ folder: src, limit })
+    return { messages, hasMore: false, nextOffset: null, nextCursor: null }
+  }, [client, query])
+
   const loadList = useCallback(async () => {
     setListLoading(true)
     setListError('')
+    pageRef.current = { nextOffset: null, nextCursor: null }
     try {
-      let msgs
+      // Starred is a virtual view over the inbox (client-side filter), so it
+      // pulls a deep slice and doesn't paginate.
       if (folder === STARRED_FOLDER) {
         const all = await client.listMessages({ folder: 'INBOX', limit: 200 })
-        msgs = all.filter((m) => (m.flags || []).includes(FLAG_FLAGGED))
-      } else if (query) {
-        msgs = await client.search(query, { folder: folder === STARRED_FOLDER ? 'INBOX' : folder })
+        setMessages(all.filter((m) => (m.flags || []).includes(FLAG_FLAGGED)))
+        setHasMore(false)
       } else {
-        msgs = await client.listMessages({ folder })
+        const page = await fetchPage({ src: folder, limit: PAGE_SIZE })
+        setMessages(page.messages || [])
+        pageRef.current = { nextOffset: page.nextOffset ?? null, nextCursor: page.nextCursor ?? null }
+        setHasMore(Boolean(page.hasMore) && (page.messages || []).length > 0)
       }
-      setMessages(msgs || [])
     } catch (e) {
       setListError(handleError(e))
       setMessages([])
+      setHasMore(false)
     } finally {
       setListLoading(false)
     }
-  }, [client, folder, query, handleError])
+  }, [client, folder, query, fetchPage, handleError])
 
   useEffect(() => { loadList() }, [loadList])
+
+  // Append the next page (infinite scroll / "Load more"). De-dupes by id, which
+  // also serves as the graceful-degrade stop: a server that ignores paging
+  // returns the same first page, yields zero fresh rows, and we stop.
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || listLoading || folder === STARRED_FOLDER) return
+    setLoadingMore(true)
+    try {
+      const { nextOffset, nextCursor } = pageRef.current
+      const page = await fetchPage({ src: folder, limit: PAGE_SIZE, offset: nextOffset, cursor: nextCursor })
+      const incoming = page.messages || []
+      const seen = new Set(messagesRef.current.map((m) => m.id))
+      const fresh = incoming.filter((m) => !seen.has(m.id))
+      if (fresh.length === 0) {
+        setHasMore(false)
+      } else {
+        setMessages((prev) => [...prev, ...fresh])
+        pageRef.current = { nextOffset: page.nextOffset ?? null, nextCursor: page.nextCursor ?? null }
+        setHasMore(Boolean(page.hasMore))
+      }
+    } catch (e) {
+      toast(handleError(e), 'error')
+      setHasMore(false)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [loadingMore, hasMore, listLoading, folder, fetchPage, handleError, toast])
 
   const threads = useMemo(() => {
     const grouped = groupThreads(messages, { threaded: settings.threaded && folder !== STARRED_FOLDER })
@@ -366,6 +433,76 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
     )
   }, [canArchive, targetsOf, removeIds, advanceAfter, client, archiveFolder, folder, handleError, loadList, toast, undoable])
 
+  // ── Snooze (hide until later) ──────────────────────────────────────────────
+  // Optional /v1 route; optimistic-remove + undoable like archive. On 404/405
+  // we disable the affordance (capability probe).
+  const canSnooze = snoozeSupported && typeof client.snooze === 'function' && folder !== STARRED_FOLDER
+  const snoozeThreads = useCallback((thread, until) => {
+    if (typeof client.snooze !== 'function') { setSnoozeSupported(false); return }
+    const targets = targetsOf(thread)
+    if (!targets.length || !until) return
+    const ids = targets.flatMap((t) => t.messages.map((m) => m.id))
+    const src = starredFolderSrc(folder)
+    const whenLabel = snoozeLabel(until)
+    advanceAfter(targets)
+    removeIds(ids)
+    setSelection(new Set())
+    undoable(
+      `Snoozed until ${whenLabel}`,
+      () => {
+        Promise.all(ids.map((id) => client.snooze(id, until, { folder: src }))).catch((e) => {
+          if (e instanceof ApiError && (e.status === 404 || e.status === 405)) {
+            setSnoozeSupported(false)
+            toast('Snooze is not available on this server', 'error')
+          } else {
+            handleError(e)
+          }
+          loadList()
+        })
+      },
+      () => loadList(),
+    )
+  }, [client, targetsOf, folder, advanceAfter, removeIds, undoable, handleError, loadList, toast])
+
+  // ── Apply / remove a user label ────────────────────────────────────────────
+  // Optional /v1 route. Fire-and-forget with a toast; on 404/405 disable it.
+  const canLabel = labelSupported && typeof client.applyLabel === 'function'
+  const applyLabel = useCallback((thread, label, add) => {
+    if (typeof client.applyLabel !== 'function') { setLabelSupported(false); return }
+    const targets = targetsOf(thread)
+    if (!targets.length || !label) return
+    const ids = targets.flatMap((t) => t.messages.map((m) => m.id))
+    const src = starredFolderSrc(folder)
+    Promise.all(ids.map((id) => client.applyLabel(id, label, add, { folder: src })))
+      .then(() => toast(add ? `Labelled “${label}”` : `Removed “${label}”`, 'success'))
+      .catch((e) => {
+        if (e instanceof ApiError && (e.status === 404 || e.status === 405)) {
+          setLabelSupported(false)
+          toast('Labels are not available on this server', 'error')
+        } else {
+          toast(handleError(e), 'error')
+        }
+      })
+    if (!thread) setSelection(new Set())
+  }, [client, targetsOf, folder, toast, handleError])
+
+  // ── Attachment upload (compose) ────────────────────────────────────────────
+  // Optional /v1 route; disabled on 404/405. Rethrows so compose can drop the
+  // pending chip while the app-level toast explains why.
+  const canUpload = uploadSupported && typeof client.uploadAttachment === 'function'
+  const uploadAttachment = useCallback(async (file, opts) => {
+    if (typeof client.uploadAttachment !== 'function') { setUploadSupported(false); throw new ApiError('unsupported', 404) }
+    try {
+      return await client.uploadAttachment(file, opts)
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 404 || e.status === 405)) {
+        setUploadSupported(false)
+        toast('Attachment upload is not available on this server', 'error')
+      }
+      throw e
+    }
+  }, [client, toast])
+
   // ── Attachment download ────────────────────────────────────────────────────
   // Optional /v1 route; on 404/405 we disable the chips (capability probe),
   // mirroring archive. The actual save is a blob download — never innerHTML.
@@ -514,6 +651,16 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
       cmds.push({ id: 'c-reply', section: 'This conversation', title: 'Reply', icon: 'reply', keys: ['r'], run: () => replyTo(full, 'reply') })
       cmds.push({ id: 'c-replyall', section: 'This conversation', title: 'Reply all', icon: 'replyall', keys: ['a'], run: () => replyTo(full, 'replyAll') })
       cmds.push({ id: 'c-forward', section: 'This conversation', title: 'Forward', icon: 'forward', keys: ['f'], run: () => replyTo(full, 'forward') })
+      if (canSnooze) {
+        for (const p of snoozeItems) {
+          cmds.push({ id: 'c-snooze-' + p.id, section: 'This conversation', title: `Snooze — ${p.label}`, hint: p.sub, icon: 'snooze', keywords: 'snooze remind later', run: () => snoozeThreads(cur, p.date) })
+        }
+      }
+      if (canLabel) {
+        for (const l of labels) {
+          cmds.push({ id: 'c-label-' + l.path, section: 'This conversation', title: `Label as ${l.label}`, dot: labelHue(l.path), keywords: 'label tag ' + l.path, run: () => applyLabel(cur, l.path, true) })
+        }
+      }
     }
 
     // Actions.
@@ -533,7 +680,7 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
     cmds.push({ id: 'p-help', section: 'Panels', title: 'Keyboard shortcuts', icon: 'keyboard', keys: ['?'], run: () => setHelpOpen(true) })
 
     return cmds
-  }, [openThread, threads, focusIdx, fullById, labels, canArchive, archiveFolder, trashFolder, specialPath, calendarAvailable, resolvedTheme, settings.density, settings.threaded, selectFolder, archiveThreads, deleteThreads, toggleStar, toggleRead, replyTo, openCompose, loadList, setSettings])
+  }, [openThread, threads, focusIdx, fullById, labels, canArchive, archiveFolder, trashFolder, specialPath, calendarAvailable, resolvedTheme, settings.density, settings.threaded, selectFolder, archiveThreads, deleteThreads, toggleStar, toggleRead, replyTo, openCompose, loadList, setSettings, canSnooze, snoozeItems, snoozeThreads, canLabel, applyLabel])
 
   return (
     <div
@@ -592,6 +739,12 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
           folder={folder}
           searchRef={searchRef}
           onMenu={() => setDrawerOpen(true)}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          onLoadMore={loadMore}
+          canSnooze={canSnooze}
+          snoozeItems={snoozeItems}
+          onSnooze={snoozeThreads}
         />
 
         <MessageView
@@ -608,6 +761,12 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
           onReplyAll={(m) => replyTo(m, 'replyAll')}
           onForward={(m) => replyTo(m, 'forward')}
           onBack={() => { setOpenThread(null); setMobilePane('list') }}
+          canSnooze={canSnooze}
+          snoozeItems={snoozeItems}
+          onSnooze={(until) => openThread && snoozeThreads(openThread, until)}
+          canLabel={canLabel}
+          labels={labels}
+          onApplyLabel={(label, add) => openThread && applyLabel(openThread, label, add)}
         />
       </div>
 
@@ -664,6 +823,7 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
               onSaveDraft={(d) => client.saveDraft(d)}
               onSend={async (d) => { await sendDraft(d); toast('Message sent', 'success'); loadList() }}
               onClose={() => closeCompose(c.id)}
+              onUploadAttachment={canUpload ? uploadAttachment : undefined}
             />
           </div>
         ))}
@@ -688,6 +848,50 @@ export default function MailApp({ baseUrl = '/v1', client: clientProp, onSend, o
 /** Starred is a virtual view over INBOX; map it back to a real source folder. */
 function starredFolderSrc(folder) {
   return folder === STARRED_FOLDER ? 'INBOX' : folder
+}
+
+/** A short human label for a snooze target (used in the undo toast). */
+function snoozeLabel(date) {
+  const d = date instanceof Date ? date : new Date(date)
+  const now = new Date()
+  const sameDay = d.toDateString() === now.toDateString()
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  if (sameDay) return `later today, ${time}`
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1)
+  if (d.toDateString() === tomorrow.toDateString()) return `tomorrow, ${time}`
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + `, ${time}`
+}
+
+/**
+ * Default snooze presets (Superhuman/Gmail-style). Times land on friendly
+ * anchors; past anchors roll forward so "Later today" is always in the future.
+ */
+export function snoozePresets(now = new Date()) {
+  const mk = (addDays, hour) => {
+    const d = new Date(now)
+    d.setDate(d.getDate() + addDays)
+    d.setHours(hour, 0, 0, 0)
+    return d
+  }
+  const laterToday = new Date(now.getTime() + 3 * 3600e3)
+  laterToday.setMinutes(0, 0, 0)
+  const daysToSat = (6 - now.getDay() + 7) % 7 || 7   // next Saturday
+  const daysToMon = (8 - now.getDay()) % 7 || 7        // next Monday
+  const out = []
+  if (laterToday.toDateString() === now.toDateString()) {
+    out.push({ id: 'later', label: 'Later today', sub: fmtSnooze(laterToday), date: laterToday })
+  }
+  out.push({ id: 'tomorrow', label: 'Tomorrow', sub: fmtSnooze(mk(1, 8)), date: mk(1, 8) })
+  out.push({ id: 'weekend', label: 'This weekend', sub: fmtSnooze(mk(daysToSat, 8)), date: mk(daysToSat, 8) })
+  out.push({ id: 'nextweek', label: 'Next week', sub: fmtSnooze(mk(daysToMon, 8)), date: mk(daysToMon, 8) })
+  return out
+}
+
+function fmtSnooze(d) {
+  const now = new Date()
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  if (d.toDateString() === now.toDateString()) return time
+  return d.toLocaleDateString(undefined, { weekday: 'short' }) + ' ' + time
 }
 
 /** Stable hue 0..359 from a label path, matching FolderList's colour dots. */

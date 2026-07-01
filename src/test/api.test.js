@@ -103,6 +103,100 @@ describe('createMailClient — attachment download', () => {
   })
 })
 
+describe('createMailClient — pagination', () => {
+  it('listMessagesPage sends offset + limit and normalises total/nextOffset', async () => {
+    const fetch = vi.fn(() => jsonRes({ messages: [{ id: '1' }, { id: '2' }], total: 10 }))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    const page = await c.listMessagesPage({ folder: 'INBOX', limit: 2, offset: 4 })
+    expect(fetch.mock.calls[0][0]).toBe('/v1/messages?folder=INBOX&limit=2&offset=4')
+    expect(page.messages).toHaveLength(2)
+    expect(page.total).toBe(10)
+    expect(page.nextOffset).toBe(6)     // offset(4) + returned(2)
+    expect(page.hasMore).toBe(true)     // 6 < 10
+  })
+
+  it('listMessagesPage prefers an opaque server cursor when present', async () => {
+    const fetch = vi.fn(() => jsonRes({ messages: [{ id: 'a' }], nextCursor: 'abc123' }))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    const page = await c.listMessagesPage({ folder: 'INBOX', limit: 50, cursor: 'prev' })
+    expect(fetch.mock.calls[0][0]).toBe('/v1/messages?folder=INBOX&limit=50&cursor=prev')
+    expect(page.nextCursor).toBe('abc123')
+    expect(page.hasMore).toBe(true)
+  })
+
+  it('infers end-of-list when a short page arrives without paging metadata', async () => {
+    const fetch = vi.fn(() => jsonRes({ messages: [{ id: '1' }, { id: '2' }] }))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    const page = await c.listMessagesPage({ folder: 'INBOX', limit: 50 })
+    expect(page.hasMore).toBe(false)    // 2 < 50 → done
+    expect(page.nextOffset).toBe(2)
+  })
+
+  it('an empty page is always terminal', async () => {
+    const fetch = vi.fn(() => jsonRes({ messages: [] }))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    const page = await c.listMessagesPage({ folder: 'INBOX', limit: 50, offset: 50 })
+    expect(page.messages).toEqual([])
+    expect(page.hasMore).toBe(false)
+  })
+
+  it('searchPage threads q + offset through the query', async () => {
+    const fetch = vi.fn(() => jsonRes({ messages: [{ id: 'x' }], total: 3 }))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    const page = await c.searchPage('invoice', { folder: 'INBOX', limit: 1, offset: 1 })
+    expect(fetch.mock.calls[0][0]).toBe('/v1/search?folder=INBOX&q=invoice&limit=1&offset=1')
+    expect(page.hasMore).toBe(true)     // 2 < 3
+  })
+})
+
+describe('createMailClient — attachment upload', () => {
+  it('POSTs multipart form data to /v1/attachments and normalises the response', async () => {
+    const fetch = vi.fn(() => jsonRes({ id: 'att-1', filename: 'a.pdf', size: 12, contentType: 'application/pdf' }, 201))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    const file = new File(['x'], 'a.pdf', { type: 'application/pdf' })
+    const out = await c.uploadAttachment(file)
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('/v1/attachments')
+    expect(init.method).toBe('POST')
+    expect(init.credentials).toBe('include')
+    expect(init.body).toBeInstanceOf(FormData)
+    // No hand-set Content-Type — the browser must add the multipart boundary.
+    expect(init.headers?.['Content-Type']).toBeUndefined()
+    expect(out).toEqual({ id: 'att-1', filename: 'a.pdf', size: 12, contentType: 'application/pdf' })
+  })
+
+  it('rejects with ApiError(404) when upload is unsupported (capability probe)', async () => {
+    const fetch = vi.fn(() => jsonRes({ error: 'no such route' }, 404))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    const file = new File(['x'], 'a.pdf', { type: 'application/pdf' })
+    await expect(c.uploadAttachment(file)).rejects.toMatchObject({ status: 404 })
+  })
+})
+
+describe('createMailClient — snooze & labels', () => {
+  it('snooze POSTs an ISO until to the snooze route', async () => {
+    const fetch = vi.fn(() => Promise.resolve({ ok: true, status: 204 }))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    const until = new Date('2026-07-02T08:00:00Z')
+    const out = await c.snooze('42', until, { folder: 'INBOX' })
+    expect(out).toBeNull()
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('/v1/messages/42/snooze?folder=INBOX')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ until: '2026-07-02T08:00:00.000Z' })
+  })
+
+  it('applyLabel POSTs {label, add} to the labels route', async () => {
+    const fetch = vi.fn(() => Promise.resolve({ ok: true, status: 204 }))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    await c.applyLabel('42', 'Work', true, { folder: 'INBOX' })
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('/v1/messages/42/labels?folder=INBOX')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ label: 'Work', add: true })
+  })
+})
+
 describe('createMailClient — calendar & contacts', () => {
   it('listEvents serialises Date range to RFC 3339 query and unwraps {events}', async () => {
     const fetch = vi.fn(() => jsonRes({ events: [{ uid: 'e1' }] }))

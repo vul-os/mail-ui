@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon.jsx'
+import Menu from './Menu.jsx'
 import { initials, avatarStyle } from './avatar.js'
 import { shortDate } from './format.js'
 
@@ -14,12 +15,30 @@ export default function MessageList({
   loading, error, onRetry,
   query = '', onSearch, onClearSearch,
   canArchive = true, folder = 'INBOX', searchRef, onMenu,
+  hasMore = false, loadingMore = false, onLoadMore,
+  canSnooze = false, snoozeItems = [], onSnooze,
 }) {
   const [q, setQ] = useState(query)
   const innerRef = useRef(null)
   const localSearch = useRef(null)
+  const sentinelRef = useRef(null)
   const lastIdx = useRef(null)
   useEffect(() => { setQ(query) }, [query])
+
+  // Infinite scroll: when the bottom sentinel scrolls into view, fetch the next
+  // page. Falls back to the explicit "Load more" button where IntersectionObserver
+  // is unavailable (e.g. jsdom/tests) or JS-disabled edge cases.
+  useEffect(() => {
+    if (!hasMore || !onLoadMore || loading) return
+    const el = sentinelRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    const io = new IntersectionObserver(
+      (entries) => { if (entries.some((e) => e.isIntersecting)) onLoadMore() },
+      { root: innerRef.current, rootMargin: '600px 0px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [hasMore, onLoadMore, loading, threads.length])
 
   // Keep the keyboard-focused row visible as j/k walk past the fold. `nearest`
   // avoids yanking the whole list when the row is already on screen.
@@ -105,6 +124,15 @@ export default function MessageList({
               onClick={() => onToggleRead?.(null, false)}><Icon name="mail" /></button>
             <button type="button" className="vm-iconbtn" aria-label="Star selected" title="Star"
               onClick={() => onToggleStar?.(null, true)}><Icon name="star" /></button>
+            {canSnooze && snoozeItems.length > 0 && (
+              <Menu
+                triggerIcon="snooze"
+                triggerLabel="Snooze selected"
+                align="right"
+                header={<span className="vm-menu-title">Snooze until</span>}
+                items={snoozeItems.map((p) => ({ id: p.id, label: p.label, sub: p.sub, icon: 'clock', onSelect: () => onSnooze?.(null, p.date) }))}
+              />
+            )}
           </div>
         ) : (
           <>
@@ -230,6 +258,20 @@ export default function MessageList({
               </li>
             )
           })}
+
+          {hasMore && (
+            <li className="vm-loadmore" ref={sentinelRef}>
+              {loadingMore ? (
+                <span className="vm-loadmore-status" role="status" aria-live="polite">
+                  <span className="vm-spinner" aria-hidden="true" /> Loading more…
+                </span>
+              ) : (
+                <button type="button" className="vm-btn vm-btn-ghost vm-sm" onClick={onLoadMore}>
+                  Load more
+                </button>
+              )}
+            </li>
+          )}
         </ul>
       )}
     </section>

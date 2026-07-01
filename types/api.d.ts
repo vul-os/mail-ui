@@ -37,6 +37,30 @@ export interface SearchOptions extends FolderQuery {
   limit?: number
 }
 
+/** Paged list/search options (offset or opaque cursor). */
+export interface PageQuery extends FolderQuery {
+  limit?: number
+  offset?: number
+  cursor?: string
+}
+
+/** Normalised page returned by listMessagesPage / searchPage. */
+export interface MessagePage {
+  messages: any[]
+  total?: number
+  nextCursor: string | null
+  nextOffset: number | null
+  hasMore: boolean
+}
+
+/** Staged-attachment descriptor returned by uploadAttachment. */
+export interface UploadedAttachment {
+  id: string | number | undefined
+  filename?: string
+  size?: number
+  contentType?: string
+}
+
 export interface DeleteMessageOptions extends FolderQuery {
   /** Expunge instead of moving to Trash. */
   hard?: boolean
@@ -77,9 +101,17 @@ export interface MailClient {
   me(): Promise<any>
   listFolders(): Promise<any[]>
   listMessages(opts?: ListMessagesOptions): Promise<any[]>
+  /** Paged sibling of listMessages — powers infinite scroll. Optional /v1. */
+  listMessagesPage(opts?: PageQuery): Promise<MessagePage>
   getMessage(uid: string | number, opts?: FolderQuery): Promise<any>
   search(q: string, opts?: SearchOptions): Promise<any[]>
+  /** Paged sibling of search. Optional /v1. */
+  searchPage(q: string, opts?: PageQuery): Promise<MessagePage>
   setFlag(uid: string | number, flag: string, add: boolean, opts?: FolderQuery): Promise<null>
+  /** Hide until `until`, then re-deliver. Optional /v1 (404/405 → ApiError). */
+  snooze(uid: string | number, until: Date | string, opts?: FolderQuery): Promise<null>
+  /** Add/remove a user label/keyword. Optional /v1 (404/405 → ApiError). */
+  applyLabel(uid: string | number, label: string, add: boolean, opts?: FolderQuery): Promise<null>
   deleteMessage(uid: string | number, opts?: DeleteMessageOptions): Promise<null>
   moveMessage(uid: string | number, toFolder: string, opts?: FolderQuery): Promise<null>
   sendMessage(draft: MessageDraft): Promise<any>
@@ -94,6 +126,8 @@ export interface MailClient {
 
   quota(): Promise<{ used: number; limit: number }>
   downloadAttachment(uid: string | number, partId: string | number, filename?: string): Promise<Blob>
+  /** Stage an outgoing attachment (multipart). Optional /v1 (404/405 → ApiError). */
+  uploadAttachment(file: Blob, opts?: { fieldName?: string; signal?: AbortSignal }): Promise<UploadedAttachment>
 }
 
 /** Create a mail API client bound to a base URL. */
