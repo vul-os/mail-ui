@@ -132,4 +132,55 @@ describe('createMailClient — calendar & contacts', () => {
     expect(url).toBe('/v1/calendar/events/uid-1')
     expect(init.method).toBe('DELETE')
   })
+
+  it('updateEvent PUTs to the uid path with serialised times + uid in body', async () => {
+    const fetch = vi.fn(() => jsonRes({ updated: true }))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    const start = new Date('2026-06-02T09:00:00Z')
+    const end = new Date('2026-06-02T10:00:00Z')
+    await c.updateEvent('e9', { summary: 'Sync', start, end, path: '/cal/e9.ics' })
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('/v1/calendar/events/e9')
+    expect(init.method).toBe('PUT')
+    const body = JSON.parse(init.body)
+    expect(body).toMatchObject({ uid: 'e9', summary: 'Sync', path: '/cal/e9.ics' })
+    expect(body.start).toBe('2026-06-02T09:00:00.000Z')
+  })
+
+  it('listContactCards unwraps {contacts} from the cards endpoint', async () => {
+    const fetch = vi.fn(() => jsonRes({ contacts: [{ uid: 'c1', name: 'A', emails: ['a@x.com'] }] }))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    const rows = await c.listContactCards({ q: 'a' })
+    expect(rows).toEqual([{ uid: 'c1', name: 'A', emails: ['a@x.com'] }])
+    expect(fetch.mock.calls[0][0]).toBe('/v1/contacts/cards?q=a')
+  })
+
+  it('createContact POSTs the body and returns the saved contact', async () => {
+    const fetch = vi.fn(() => jsonRes({ contact: { uid: 'new', name: 'B', emails: ['b@x.com'] } }, 201))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    const saved = await c.createContact({ name: 'B', emails: ['b@x.com'] })
+    expect(saved).toEqual({ uid: 'new', name: 'B', emails: ['b@x.com'] })
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('/v1/contacts')
+    expect(init.method).toBe('POST')
+  })
+
+  it('updateContact PUTs to the uid path with uid injected', async () => {
+    const fetch = vi.fn(() => jsonRes({ contact: { uid: 'c1' } }))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    await c.updateContact('c1', { name: 'A', emails: ['a@x.com'], path: '/ab/c1.vcf' })
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('/v1/contacts/c1')
+    expect(init.method).toBe('PUT')
+    expect(JSON.parse(init.body)).toMatchObject({ uid: 'c1', path: '/ab/c1.vcf' })
+  })
+
+  it('deleteContact DELETEs the uid path with optional ?path', async () => {
+    const fetch = vi.fn(() => Promise.resolve({ ok: true, status: 204 }))
+    const c = createMailClient({ baseUrl: '/v1', fetch })
+    await c.deleteContact('c1', { path: '/ab/c1.vcf' })
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('/v1/contacts/c1?path=%2Fab%2Fc1.vcf')
+    expect(init.method).toBe('DELETE')
+  })
 })

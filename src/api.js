@@ -157,6 +157,19 @@ export function createMailClient(opts = {}) {
       })
     },
 
+    /**
+     * PUT /v1/calendar/events/:uid → { updated }
+     * Idempotent edit. Pass `event.path` (from listEvents) so the update targets
+     * the exact CalDAV object instead of forking a duplicate. Optional endpoint:
+     * older servers 404/405, so callers can degrade to delete+create.
+     */
+    updateEvent(uid, event) {
+      return request(`/calendar/events/${encodeURIComponent(uid)}`, {
+        method: 'PUT',
+        body: { ...event, uid, start: iso(event.start), end: iso(event.end) },
+      })
+    },
+
     /** DELETE /v1/calendar/events/:uid → 204 */
     deleteEvent(uid) {
       return request(`/calendar/events/${encodeURIComponent(uid)}`, { method: 'DELETE' })
@@ -170,10 +183,44 @@ export function createMailClient(opts = {}) {
 
     // ── Contacts (requires lilmail [carddav] enabled) ─────────────────────
 
-    /** GET /v1/contacts?q=&limit= → { email, name }[] */
+    /** GET /v1/contacts?q=&limit= → { email, name }[] (lean; compose autocomplete) */
     async listContacts({ q = '', limit } = {}) {
       const data = await request('/contacts', { query: { q, limit } })
       return data.contacts ?? []
+    },
+
+    /**
+     * GET /v1/contacts/cards?q=&limit= → Contact[]  (full cards for the view)
+     * Contact = { uid, name, org?, title?, note?, emails[], phones?, path? }.
+     * Optional endpoint (lilmail wave2): rejects with ApiError(404) on older
+     * servers so the UI can fall back to the lean listContacts form.
+     */
+    async listContactCards({ q = '', limit } = {}) {
+      const data = await request('/contacts/cards', { query: { q, limit } })
+      return data.contacts ?? []
+    },
+
+    /** POST /v1/contacts → { contact } (server mints the uid) */
+    async createContact(contact) {
+      const data = await request('/contacts', { method: 'POST', body: contact })
+      return data?.contact ?? data
+    },
+
+    /** PUT /v1/contacts/:uid → { contact }. Pass `contact.path` to target the card. */
+    async updateContact(uid, contact) {
+      const data = await request(`/contacts/${encodeURIComponent(uid)}`, {
+        method: 'PUT',
+        body: { ...contact, uid },
+      })
+      return data?.contact ?? data
+    },
+
+    /** DELETE /v1/contacts/:uid?path= → 204 */
+    deleteContact(uid, { path } = {}) {
+      return request(`/contacts/${encodeURIComponent(uid)}`, {
+        method: 'DELETE',
+        query: { path },
+      })
     },
 
     // ── Account / capability probes (optional; older servers may 404) ─────

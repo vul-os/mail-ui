@@ -208,14 +208,14 @@ const calSeed = [
 ]
 
 const contactSeed = [
-  { email: 'alice@vulos.org', name: 'Alice Mokoena' },
-  { email: 'bob@designco.io', name: 'Bob Osei' },
-  { email: 'maya@startup.co', name: 'Maya Chen' },
-  { email: 'team@vulos.org', name: 'Vulos Team' },
-  { email: 'security@vulos.org', name: 'Security' },
-  { email: 'imran@vulos.org', name: 'Imran Paruk' },
-  { email: 'nadia@vulos.org', name: 'Nadia Khan' },
-  { email: 'sipho@vulos.org', name: 'Sipho Dlamini' },
+  { uid: 'c1', name: 'Alice Mokoena', org: 'Vulos', title: 'Engineer', emails: ['alice@vulos.org'], phones: ['+27 11 555 0101'], path: '/ab/c1.vcf' },
+  { uid: 'c2', name: 'Bob Osei', org: 'DesignCo', emails: ['bob@designco.io'], phones: [], path: '/ab/c2.vcf' },
+  { uid: 'c3', name: 'Maya Chen', org: 'Startup', emails: ['maya@startup.co'], phones: [], path: '/ab/c3.vcf' },
+  { uid: 'c4', name: 'Vulos Team', emails: ['team@vulos.org'], phones: [], path: '/ab/c4.vcf' },
+  { uid: 'c5', name: 'Security', emails: ['security@vulos.org'], phones: [], path: '/ab/c5.vcf' },
+  { uid: 'c6', name: 'Imran Paruk', emails: ['imran@vulos.org'], phones: [], path: '/ab/c6.vcf' },
+  { uid: 'c7', name: 'Nadia Khan', emails: ['nadia@vulos.org'], phones: [], path: '/ab/c7.vcf' },
+  { uid: 'c8', name: 'Sipho Dlamini', emails: ['sipho@vulos.org'], phones: [], path: '/ab/c8.vcf' },
 ]
 
 export function createMockClient() {
@@ -284,11 +284,54 @@ export function createMockClient() {
     },
     sendMessage: async (draft) => { console.log('demo send', draft); return { sent: true } },
     saveDraft: async (draft) => { console.log('demo draft', draft); return { saved: true } },
-    listEvents: async () => calSeed.map((e) => ({ ...e })),
-    createEvent: async (e) => { calSeed.push({ ...e, uid: 'e' + (calSeed.length + 1) }); return { created: true } },
-    deleteEvent: async () => null,
+    listEvents: async ({ start, end } = {}) => {
+      const s = start ? new Date(start) : null
+      const e = end ? new Date(end) : null
+      return calSeed
+        .filter((ev) => {
+          if (!s || !e) return true
+          const t = new Date(ev.start)
+          return t >= s && t < e
+        })
+        .map((ev) => ({ ...ev }))
+    },
+    createEvent: async (e) => { calSeed.push({ ...e, uid: 'e' + (calSeed.length + 1) + '-' + Date.now() }); return { created: true } },
+    updateEvent: async (uid, e) => {
+      const i = calSeed.findIndex((x) => x.uid === uid)
+      if (i >= 0) calSeed[i] = { ...calSeed[i], ...e, uid }
+      return { updated: true }
+    },
+    deleteEvent: async (uid) => {
+      const i = calSeed.findIndex((x) => x.uid === uid)
+      if (i >= 0) calSeed.splice(i, 1)
+      return null
+    },
     freeBusy: async () => calSeed.filter((e) => !e.allDay).map(({ start, end }) => ({ start, end })),
+    // Lean form (compose autocomplete) — {email,name}.
     listContacts: async ({ q = '' } = {}) =>
-      contactSeed.filter((c) => (c.name + c.email).toLowerCase().includes(q.toLowerCase())),
+      contactSeed
+        .filter((c) => (c.name + ' ' + c.emails.join(' ')).toLowerCase().includes(q.toLowerCase()))
+        .map((c) => ({ email: c.emails[0], name: c.name })),
+    // Full cards (contacts view).
+    listContactCards: async ({ q = '' } = {}) =>
+      contactSeed
+        .filter((c) => (c.name + ' ' + (c.org || '') + ' ' + c.emails.join(' ')).toLowerCase().includes(q.toLowerCase()))
+        .map((c) => ({ ...c, emails: [...c.emails], phones: [...(c.phones || [])] })),
+    createContact: async (c) => {
+      const saved = { ...c, uid: 'c' + (contactSeed.length + 1) + '-' + Date.now(), path: '/ab/new.vcf' }
+      contactSeed.push(saved)
+      return saved
+    },
+    updateContact: async (uid, c) => {
+      const i = contactSeed.findIndex((x) => x.uid === uid)
+      const saved = { ...(i >= 0 ? contactSeed[i] : {}), ...c, uid }
+      if (i >= 0) contactSeed[i] = saved; else contactSeed.push(saved)
+      return saved
+    },
+    deleteContact: async (uid) => {
+      const i = contactSeed.findIndex((x) => x.uid === uid)
+      if (i >= 0) contactSeed.splice(i, 1)
+      return null
+    },
   }
 }
