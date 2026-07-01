@@ -15,6 +15,7 @@ export { default as MessageList } from '../components/MessageList.jsx'
 export { default as MessageView } from '../components/MessageView.jsx'
 export { default as Compose } from '../components/Compose.jsx'
 export { default as Settings } from '../components/Settings.jsx'
+export { default as CommandPalette } from '../components/CommandPalette.jsx'
 export { default as Icon } from '../components/Icon.jsx'
 
 export { groupThreads } from '../components/threading.js'
