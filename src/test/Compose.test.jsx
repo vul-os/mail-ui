@@ -14,6 +14,22 @@ describe('<Compose/>', () => {
     expect(close.tagName).toBe('BUTTON')
   })
 
+  it('sends on ⌘/Ctrl+Enter from within the composer', async () => {
+    const onSend = vi.fn(async () => {})
+    render(<Compose initial={{ to: 'x@y.com', subject: 'Hi' }} onClose={() => {}} onSend={onSend} />)
+    const subject = screen.getByLabelText('Subject')
+    fireEvent.keyDown(subject, { key: 'Enter', metaKey: true })
+    expect(onSend).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not send on ⌘/Ctrl+Enter when there is no recipient', () => {
+    const onSend = vi.fn(async () => {})
+    render(<Compose initial={{ subject: 'Hi' }} onClose={() => {}} onSend={onSend} />)
+    fireEvent.keyDown(screen.getByLabelText('Subject'), { key: 'Enter', ctrlKey: true })
+    expect(onSend).not.toHaveBeenCalled()
+    expect(screen.getByText('Add at least one recipient')).toBeInTheDocument()
+  })
+
   it('toggles Cc/Bcc visibility both ways', () => {
     render(<Compose onClose={() => {}} onSend={() => {}} />)
     expect(screen.queryByLabelText('Cc')).not.toBeInTheDocument()

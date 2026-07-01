@@ -89,6 +89,13 @@ export default function Compose({
 
   // Esc closes this compose; Tab is trapped within the dialog when maximised.
   function onDockKeyDown(e) {
+    // ⌘/Ctrl+Enter sends from anywhere in the composer — the reflex send.
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (!sending) send()
+      return
+    }
     if (e.key === 'Escape') {
       // Stop the app-wide keyboard handler (window listener) from also acting,
       // so Esc only closes *this* focused compose.
@@ -181,7 +188,8 @@ export default function Compose({
         {err && <div className="vm-error" role="alert">{err}</div>}
 
         <footer className="vm-compose-foot">
-          <button type="button" className="vm-btn vm-btn-primary" onClick={send} disabled={sending || !onSend}>
+          <button type="button" className="vm-btn vm-btn-primary" onClick={send} disabled={sending || !onSend}
+            title="Send (⌘↵)">
             <Icon name="send" /> {sending ? 'Sending…' : 'Send'}
           </button>
           <div className="vm-fmt" role="toolbar" aria-label="Formatting">
